@@ -147,7 +147,9 @@ class HaClient(private val cfg: Config, private val listener: Listener) {
         if (webSocket !== ws) return
         setConnected(false)
         if (!running) return
-        val delay = minOf(30_000L, 1_000L shl minOf(attempt, 5))
+        // retry quickly for the first minute (right after pairing, Home Assistant is still
+        // creating the device), then back off
+        val delay = if (attempt < 20) minOf(3_000L, 1_000L shl minOf(attempt, 5)) else 30_000L
         attempt++
         main.postDelayed({ connect() }, delay)
     }

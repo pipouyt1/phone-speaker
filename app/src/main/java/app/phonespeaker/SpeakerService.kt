@@ -104,7 +104,11 @@ class SpeakerService : Service(), HaClient.Listener {
     }
 
     private fun start() {
-        player = PlayerController(this) { pushState() }
+        player = PlayerController(this, { pushState() }) {
+            // lets Home Assistant stop waiting for a sound that will never play
+            client?.send(JSONObject().put("type", "play_error"))
+            main.post { clearAnnounce() }
+        }
         val c = HaClient(cfg, this)
         client = c
         instance = this

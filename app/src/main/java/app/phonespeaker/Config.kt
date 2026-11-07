@@ -27,13 +27,16 @@ class Config(private val ctx: Context) {
      * voice: smart + microphone and voice assistant (Assist satellite).
      */
     var mode: String
-        get() = prefs.getString("mode", null)
-            ?: if (prefs.getBoolean("smart", true)) MODE_SMART else MODE_GENERIC
+        get() = prefs.getString("mode", null) ?: when {
+            // installs from before the voice mode existed keep their choice
+            prefs.contains("smart") -> if (prefs.getBoolean("smart", true)) MODE_SMART else MODE_GENERIC
+            else -> MODE_VOICE
+        }
         set(v) = prefs.edit().putString("mode", v).apply()
 
     /** Keep the microphone open and let Home Assistant's wake word engine listen. */
     var listen: Boolean
-        get() = prefs.getBoolean("listen", false)
+        get() = prefs.getBoolean("listen", true)
         set(v) = prefs.edit().putBoolean("listen", v).apply()
 
     val smart: Boolean get() = mode != MODE_GENERIC

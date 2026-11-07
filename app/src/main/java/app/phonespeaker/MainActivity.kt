@@ -192,7 +192,7 @@ class MainActivity : AppCompatActivity() {
         address.visibility = pairing
         code.visibility = pairing
         pairButton.visibility = pairing
-        modes.visibility = operating
+        modes.visibility = View.VISIBLE // chosen before pairing: it decides which entities Home Assistant creates
         toggle.visibility = operating
         unpair.visibility = operating
         listenSwitch.visibility = voice

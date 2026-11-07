@@ -21,16 +21,27 @@ teléfono funciona eligiéndolo en el selector.
 ## Asistente de voz
 
 El teléfono transmite el micrófono (16 kHz, mono, con cancelación de eco) a un pipeline de
-Assist de HA y reproduce la respuesta. Hay dos formas de empezar una conversación:
+Assist de HA y reproduce la respuesta.
+
+**Configuración guiada:** si el modo es *Asistente de voz* al emparejar, al terminar de agregar el
+teléfono en HA se abre solo el asistente de configuración de voz de Home Assistant: prueba el
+parlante y la conexión, te deja elegir y probar la palabra de activación, el área, y crea o
+elige el pipeline (por ejemplo con Home Assistant Cloud). Más tarde puedes repetirlo desde la
+página del dispositivo.
+
+Hay dos formas de empezar una conversación:
 
 - **Botón "Hablar"** en la app: la conversación empieza al tocarlo y HA detecta cuándo dejas de
-  hablar. Funciona con solo tener voz a texto y texto a voz en el pipeline (por ejemplo, Home
-  Assistant Cloud).
-- **Escucha continua** (interruptor en la app): el teléfono transmite el micrófono sin parar y
-  **el motor de palabra de activación del pipeline de Assist** detecta la palabra. Requiere uno
-  en HA, por ejemplo el complemento **openWakeWord** (Ajustes > Complementos), y elegirlo como
-  palabra de activación en el pipeline (Ajustes > Voz asistentes). Si falla 3 veces seguidas, la
-  app desactiva la escucha continua sola y te avisa.
+  hablar. Solo necesita voz a texto y texto a voz en el pipeline.
+- **Escucha continua** (interruptor en la app, activado por defecto en este modo): el teléfono
+  transmite el micrófono sin parar y **la integración busca la palabra de activación con el motor
+  instalado en HA** (por ejemplo el complemento **openWakeWord**, Ajustes > Complementos). La
+  palabra se elige en el asistente de configuración o con la configuración del satélite, y no hace
+  falta ponerla en el pipeline. Si no hay motor, usa el de la configuración del pipeline. Si falla
+  3 veces seguidas, la app desactiva la escucha continua y te avisa.
+
+Cada teléfono tiene su propio selector de **pipeline** y de **detección de fin de frase**
+(entidades `select`), así que puede usar otro idioma o asistente que el resto de la casa.
 
 Mientras suena una respuesta, el teléfono no envía el micrófono, para no oírse a sí mismo. La
 entidad también soporta el servicio `assist_satellite.announce`.
@@ -58,10 +69,11 @@ Después, en cualquiera de los dos casos:
 
 1. Descarga `phone-speaker-debug.apk` desde *Releases* e instálalo en el teléfono
    (o compílalo y usa `adb install -r app/build/outputs/apk/debug/app-debug.apk`).
-2. Abre la app, escribe la dirección de HA (por ejemplo `192.168.1.50`, o `192.168.1.50:8123`,
+2. Abre la app, elige el modo, escribe la dirección de HA (por ejemplo `192.168.1.50`, o `192.168.1.50:8123`,
    o una URL `https://...`) y el código. Toca **Emparejar**.
 3. En HA pulsa **Enviar**. El teléfono aparece como dispositivo con sus entidades.
-4. Elige el modo. Para el asistente de voz, da el permiso del micrófono cuando lo pida.
+4. Elige el modo **antes** de emparejar (por defecto, Asistente de voz) y da el permiso del
+   micrófono cuando lo pida.
 
 La app guarda un token propio del dispositivo (no tu token de HA). Para revocarlo, borra la
 integración en HA o toca **Desemparejar** en la app.

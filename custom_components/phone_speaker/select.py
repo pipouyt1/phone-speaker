@@ -1,23 +1,32 @@
-"""Audio output selector (smart mode only)."""
+"""Selects: audio output (smart and voice modes) and the Assist pipeline (voice mode)."""
 
 from __future__ import annotations
 
+from homeassistant.components.assist_pipeline.select import (
+    AssistPipelineSelect,
+    VadSensitivitySelect,
+)
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import CONF_DEVICE_ID, CONF_MODE, DOMAIN, MODE_GENERIC
+from .const import CONF_DEVICE_ID, CONF_MODE, DOMAIN, MODE_GENERIC, MODE_VOICE
+from .device import PhoneDevice
 from .entity import PhoneEntity
 
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    if entry.data[CONF_MODE] == MODE_GENERIC:
+    mode = entry.data[CONF_MODE]
+    if mode == MODE_GENERIC:
         return
     device = hass.data[DOMAIN]["devices"][entry.data[CONF_DEVICE_ID]]
-    async_add_entities([AudioOutputSelect(device)])
+    entities: list[SelectEntity] = [AudioOutputSelect(device)]
+    if mode == MODE_VOICE:
+        entities += [PhonePipelineSelect(hass, device), PhoneVadSensitivitySelect(hass, device)]
+    async_add_entities(entities)
 
 
 class AudioOutputSelect(PhoneEntity, SelectEntity):
@@ -26,7 +35,7 @@ class AudioOutputSelect(PhoneEntity, SelectEntity):
     _attr_name = "Audio output"
     _attr_icon = "mdi:speaker-bluetooth"
 
-    def __init__(self, device) -> None:
+    def __init__(self, device: PhoneDevice) -> None:
         super().__init__(device, "audio_output")
 
     @property
@@ -43,3 +52,27 @@ class AudioOutputSelect(PhoneEntity, SelectEntity):
 
     async def async_select_option(self, option: str) -> None:
         await self.device.async_send({"type": "output", "name": option})
+
+
+class PhonePipelineSelect(AssistPipelineSelect):
+    """Which Assist pipeline this phone uses ("preferred" follows the system default).
+
+    The unique id format is what the Assist satellite entity and Home Assistant's
+    voice assistant setup wizard look up.
+    """
+
+    _attr_has_entity_name = True
+
+    def __init__(self, hass: HomeAssistant, device: PhoneDevice) -> None:
+        super().__init__(hass, DOMAIN, device.device_id)
+        self._attr_device_info = device.device_info
+
+
+class PhoneVadSensitivitySelect(VadSensitivitySelect):
+    """How quickly the end of a spoken command is detected."""
+
+    _attr_has_entity_name = True
+
+    def __init__(self, hass: HomeAssistant, device: PhoneDevice) -> None:
+        super().__init__(hass, device.device_id)
+        self._attr_device_info = device.device_info

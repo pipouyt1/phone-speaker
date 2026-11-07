@@ -12,5 +12,23 @@
     "abort": {
       "already_configured": "This phone was already added. Its pairing has been renewed."
     }
+  },
+  "entity": {
+    "select": {
+      "pipeline": {
+        "name": "Assistant pipeline",
+        "state": {
+          "preferred": "Preferred"
+        }
+      },
+      "vad_sensitivity": {
+        "name": "Finished speaking detection",
+        "state": {
+          "default": "Default",
+          "relaxed": "Relaxed",
+          "aggressive": "Aggressive"
+        }
+      }
+    }
   }
 }

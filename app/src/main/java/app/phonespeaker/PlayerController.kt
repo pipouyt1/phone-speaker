@@ -11,6 +11,7 @@ import android.os.Looper
 class PlayerController(
     @Suppress("unused") private val ctx: Context,
     private val onChange: () -> Unit,
+    private val onError: () -> Unit = {},
 ) {
     companion object {
         const val IDLE = 1
@@ -51,10 +52,10 @@ class PlayerController(
             p.setDataSource(url)
             p.setOnPreparedListener { applyVolume(); it.start(); setState(PLAYING) }
             p.setOnCompletionListener { setState(IDLE) }
-            p.setOnErrorListener { _, _, _ -> release(); setState(IDLE); true }
+            p.setOnErrorListener { _, _, _ -> release(); setState(IDLE); onError(); true }
             p.prepareAsync()
         } catch (_: Exception) {
-            release(); setState(IDLE)
+            release(); setState(IDLE); onError()
         }
     }
 

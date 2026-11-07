@@ -50,6 +50,7 @@ class PhoneDevice:
 
         self._playback_done: asyncio.Event | None = None
         self._saw_playing = False
+        self._play_failed = False
 
     @property
     def connected(self) -> bool:
@@ -104,6 +105,10 @@ class PhoneDevice:
         kind = data.get("type")
         if kind == "state":
             self._handle_state(data)
+        elif kind == "play_error":
+            self._play_failed = True
+            if self._playback_done is not None:
+                self._playback_done.set()
         elif kind in ("voice_start", "voice_stop") and self.voice_listener is not None:
             self.voice_listener(data)
 
@@ -149,6 +154,7 @@ class PhoneDevice:
         done = asyncio.Event()
         self._playback_done = done
         self._saw_playing = False
+        self._play_failed = False
         await self.async_send({"type": "play", "url": url, "announce": announce})
         try:
             await asyncio.wait_for(done.wait(), PLAYBACK_TIMEOUT)
@@ -157,6 +163,8 @@ class PhoneDevice:
         finally:
             if self._playback_done is done:
                 self._playback_done = None
+        if self._play_failed:
+            raise HomeAssistantError(f"{self.name} could not play {url}")
 
     async def async_close(self) -> None:
         if self.ws is not None and not self.ws.closed:

@@ -12,5 +12,23 @@
     "abort": {
       "already_configured": "Este teléfono ya estaba agregado. Se renovó su emparejamiento."
     }
+  },
+  "entity": {
+    "select": {
+      "pipeline": {
+        "name": "Pipeline del asistente",
+        "state": {
+          "preferred": "Preferido"
+        }
+      },
+      "vad_sensitivity": {
+        "name": "Detección de fin de frase",
+        "state": {
+          "default": "Predeterminada",
+          "relaxed": "Relajada",
+          "aggressive": "Agresiva"
+        }
+      }
+    }
   }
 }
