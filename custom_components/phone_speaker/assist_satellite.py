@@ -36,6 +36,8 @@ from .entity import PhoneEntity
 
 _LOGGER = logging.getLogger(__name__)
 
+CONNECTION_TEST_URL_BASE = "/api/assist_satellite/connection_test"
+
 # pipeline event -> short name shown on the phone
 _EVENTS = {
     PipelineEventType.STT_START: "listening",
@@ -317,6 +319,21 @@ class PhoneAssistSatellite(PhoneEntity, AssistSatelliteEntity):
 
     async def async_announce(self, announcement: AssistSatelliteAnnouncement) -> None:
         """Play an announcement, blocking until it has finished."""
+        if announcement.media_id.startswith(CONNECTION_TEST_URL_BASE):
+            # The setup wizard's connection test only needs the phone to fetch this sound, and the
+            # wizard can start several tests at once: Home Assistant rejects an announcement while
+            # another is still being announced, which would make a second test time out. So do not
+            # hold the announcement until the sound has finished playing.
+            await self.device.async_send(
+                {
+                    "type": "play",
+                    "url": async_process_play_media_url(
+                        self.hass, announcement.media_id, allow_relative_url=True
+                    ),
+                    "announce": True,
+                }
+            )
+            return
         if announcement.preannounce_media_id:
             await self.device.async_play_and_wait(
                 async_process_play_media_url(

@@ -6,6 +6,7 @@ import android.media.AudioDeviceInfo
 import android.media.MediaPlayer
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 
 /** Wraps MediaPlayer. States use the numeric values of ESPHome's MediaPlayerState. */
 class PlayerController(
@@ -14,6 +15,7 @@ class PlayerController(
     private val onError: () -> Unit = {},
 ) {
     companion object {
+        private const val TAG = "PhoneSpeaker"
         const val IDLE = 1
         const val PLAYING = 2
         const val PAUSED = 3
@@ -38,6 +40,7 @@ class PlayerController(
     }
 
     fun play(url: String) = main.post {
+        Log.i(TAG, "play ${url.substringBefore('?')} (query ${if ('?' in url) "yes" else "no"})")
         release()
         val p = MediaPlayer()
         player = p
@@ -50,11 +53,15 @@ class PlayerController(
             )
             output?.let { p.setPreferredDevice(it) }
             p.setDataSource(url)
-            p.setOnPreparedListener { applyVolume(); it.start(); setState(PLAYING) }
-            p.setOnCompletionListener { setState(IDLE) }
-            p.setOnErrorListener { _, _, _ -> release(); setState(IDLE); onError(); true }
+            p.setOnPreparedListener { Log.i(TAG, "playback prepared"); applyVolume(); it.start(); setState(PLAYING) }
+            p.setOnCompletionListener { Log.i(TAG, "playback finished"); setState(IDLE) }
+            p.setOnErrorListener { _, what, extra ->
+                Log.w(TAG, "playback error what=$what extra=$extra")
+                release(); setState(IDLE); onError(); true
+            }
             p.prepareAsync()
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w(TAG, "could not start playback: $e")
             release(); setState(IDLE); onError()
         }
     }

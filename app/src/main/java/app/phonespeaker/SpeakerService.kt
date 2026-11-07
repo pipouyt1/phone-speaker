@@ -162,6 +162,7 @@ class SpeakerService : Service(), HaClient.Listener {
     // ---- commands from Home Assistant ------------------------------------------
 
     override fun onCommand(msg: JSONObject) {
+        Log.i(TAG, "command ${msg.optString("type")}")
         val p = player ?: return
         when (msg.optString("type")) {
             "play" -> msg.optString("url").takeIf { it.isNotEmpty() }?.let {
