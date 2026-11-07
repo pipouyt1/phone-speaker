@@ -32,7 +32,6 @@ class SpeakerService : Service(), HaClient.Listener {
         private const val CHANNEL = "speaker"
         private const val STATE_INTERVAL_MS = 60_000L
         private const val ANNOUNCE_TIMEOUT_MS = 120_000L
-        private const val MAX_VOICE_ERRORS = 3
 
         @Volatile var running = false
             private set
@@ -196,20 +195,6 @@ class SpeakerService : Service(), HaClient.Listener {
         }
     }
 
-    /** The "continuous listening" switch changed. */
-    fun applyListening() {
-        main.post {
-            main.removeCallbacks(restartListening)
-            if (cfg.listen) {
-                voiceErrors = 0
-                maybeListen()
-            } else {
-                if (streaming) stopVoice() else capture?.stop()
-                voiceStatus = ""
-            }
-        }
-    }
-
     private fun startVoice(stage: String) {
         if (!voiceEnabled()) return
         if (streaming) client?.send(JSONObject().put("type", "voice_stop"))
@@ -235,7 +220,7 @@ class SpeakerService : Service(), HaClient.Listener {
             // back off when Home Assistant keeps ending the run right away, instead of looping
             val shortRun = SystemClock.elapsedRealtime() - lastVoiceStart < 1_500L
             val delay = when {
-                voiceErrors > 0 -> 5_000L
+                voiceErrors > 0 -> minOf(30_000L, 5_000L * voiceErrors)
                 shortRun -> 3_000L
                 else -> 300L
             }
@@ -267,13 +252,9 @@ class SpeakerService : Service(), HaClient.Listener {
             "error" -> {
                 voiceErrors++
                 val detail = msg.optString("message").ifEmpty { msg.optString("code") }
-                voiceStatus = "Error de voz: $detail"
-                if (voiceErrors >= MAX_VOICE_ERRORS && cfg.listen) {
-                    cfg.listen = false
-                    capture?.stop()
-                    voiceStatus = "Escucha continua desactivada tras varios errores. ¿Falta un motor " +
-                        "de palabra de activación (openWakeWord) en el pipeline de Assist?"
-                }
+                // keep listening and retry with a growing delay: the cause (e.g. a wake word
+                // engine that is still starting) usually fixes itself
+                voiceStatus = "Error de voz: $detail. Reintentando..."
             }
         }
     }

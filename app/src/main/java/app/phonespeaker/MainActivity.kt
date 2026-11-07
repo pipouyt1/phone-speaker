@@ -10,7 +10,6 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
-import android.widget.Switch
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -23,7 +22,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var code: EditText
     private lateinit var pairButton: Button
     private lateinit var modes: RadioGroup
-    private lateinit var listenSwitch: Switch
     private lateinit var talkButton: Button
     private lateinit var toggle: Button
     private lateinit var unpair: Button
@@ -96,14 +94,6 @@ class MainActivity : AppCompatActivity() {
             refresh()
         }
 
-        listenSwitch = Switch(this).apply {
-            text = "Escucha continua (palabra de activación en Home Assistant)"
-            isChecked = cfg.listen
-            setOnCheckedChangeListener { _, checked ->
-                cfg.listen = checked
-                SpeakerService.instance?.applyListening()
-            }
-        }
         talkButton = Button(this).apply {
             text = "Hablar"
             setOnClickListener { SpeakerService.instance?.talk() }
@@ -120,7 +110,7 @@ class MainActivity : AppCompatActivity() {
         }
         status = TextView(this).apply { setPadding(0, pad, 0, 0) }
 
-        listOf(address, code, pairButton, modes, listenSwitch, talkButton, toggle, unpair, status)
+        listOf(address, code, pairButton, modes, talkButton, toggle, unpair, status)
             .forEach(root::addView)
         setContentView(android.widget.ScrollView(this).apply { addView(root) })
     }
@@ -195,7 +185,6 @@ class MainActivity : AppCompatActivity() {
         modes.visibility = View.VISIBLE // chosen before pairing: it decides which entities Home Assistant creates
         toggle.visibility = operating
         unpair.visibility = operating
-        listenSwitch.visibility = voice
         talkButton.visibility = voice
 
         if (!paired) {

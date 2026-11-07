@@ -34,10 +34,11 @@ class Config(private val ctx: Context) {
         }
         set(v) = prefs.edit().putString("mode", v).apply()
 
-    /** Keep the microphone open and let Home Assistant's wake word engine listen. */
-    var listen: Boolean
-        get() = prefs.getBoolean("listen", true)
-        set(v) = prefs.edit().putBoolean("listen", v).apply()
+    /**
+     * In voice mode the microphone is always streaming to Home Assistant, whose wake word
+     * engine decides when someone is talking to the assistant: nothing to configure here.
+     */
+    val listen: Boolean get() = voice
 
     val smart: Boolean get() = mode != MODE_GENERIC
     val voice: Boolean get() = mode == MODE_VOICE
