@@ -1,0 +1,16 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Emparejar un teléfono",
+        "description": "Abre la app Phone Speaker en el teléfono, escribe la dirección de Home Assistant `{address}` y este código:\n\n## {code}\n\nToca **Emparejar** en la app y luego pulsa **Enviar** aquí."
+      }
+    },
+    "error": {
+      "not_paired": "Ningún teléfono ha usado este código todavía. Empareja primero en la app y luego pulsa Enviar."
+    },
+    "abort": {
+      "already_configured": "Este teléfono ya estaba agregado. Se renovó su emparejamiento."
+    }
+  }
+}

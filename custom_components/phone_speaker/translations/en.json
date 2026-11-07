@@ -1,0 +1,16 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Pair a phone",
+        "description": "Open the Phone Speaker app on the phone, enter the Home Assistant address `{address}` and this code:\n\n## {code}\n\nTap **Pair** in the app, then press **Submit** here."
+      }
+    },
+    "error": {
+      "not_paired": "No phone has used this code yet. Pair it in the app first, then press Submit."
+    },
+    "abort": {
+      "already_configured": "This phone was already added. Its pairing has been renewed."
+    }
+  }
+}

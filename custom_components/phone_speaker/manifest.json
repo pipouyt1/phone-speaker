@@ -1,0 +1,18 @@
+{
+  "codeowners": [
+    "@pipouyt1"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "http",
+    "media_source"
+  ],
+  "documentation": "https://github.com/pipouyt1/phone-speaker",
+  "domain": "phone_speaker",
+  "integration_type": "device",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/pipouyt1/phone-speaker/issues",
+  "name": "Phone Speaker",
+  "requirements": [],
+  "version": "0.1.0"
+}
