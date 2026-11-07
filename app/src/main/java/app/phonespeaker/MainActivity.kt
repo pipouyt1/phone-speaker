@@ -3,44 +3,28 @@ package app.phonespeaker
 import android.Manifest
 import android.content.Intent
 import android.os.Bundle
-import android.text.InputType
-import android.view.View
-import android.widget.Button
-import android.widget.EditText
-import android.widget.LinearLayout
-import android.widget.RadioButton
-import android.widget.RadioGroup
-import android.widget.SeekBar
-import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
+import app.phonespeaker.ui.AppActions
+import app.phonespeaker.ui.PhoneSpeakerApp
+import app.phonespeaker.ui.PhoneSpeakerTheme
+import app.phonespeaker.ui.UiState
+import kotlinx.coroutines.delay
 import kotlin.concurrent.thread
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : ComponentActivity(), AppActions {
     private lateinit var cfg: Config
-
-    private lateinit var address: EditText
-    private lateinit var code: EditText
-    private lateinit var pairButton: Button
-    private lateinit var modes: RadioGroup
-    private lateinit var talkButton: Button
-    private lateinit var chimeLabel: TextView
-    private lateinit var chimeSlider: SeekBar
-    private lateinit var toggle: Button
-    private lateinit var unpair: Button
-    private lateinit var status: TextView
-
-    private val modeButtons = LinkedHashMap<String, RadioButton>()
-
-    private val refresher = object : Runnable {
-        override fun run() {
-            refresh()
-            status.postDelayed(this, 1500)
-        }
-    }
+    private var tick by mutableIntStateOf(0)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         cfg = Config(this)
         requestPermissions(
             arrayOf(
@@ -49,183 +33,109 @@ class MainActivity : AppCompatActivity() {
                 Manifest.permission.RECORD_AUDIO,
             ), 1
         )
-
-        val pad = (16 * resources.displayMetrics.density).toInt()
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(pad, pad, pad, pad)
-        }
-
-        address = EditText(this).apply {
-            hint = "Dirección de Home Assistant (ej. 192.168.1.50)"
-            inputType = InputType.TYPE_TEXT_VARIATION_URI
-            setText(cfg.baseUrl)
-        }
-        code = EditText(this).apply {
-            hint = "Código de emparejamiento"
-            inputType = InputType.TYPE_CLASS_NUMBER
-        }
-        pairButton = Button(this).apply {
-            text = "Emparejar"
-            setOnClickListener { onPair() }
-        }
-
-        modes = RadioGroup(this)
-        listOf(
-            Config.MODE_GENERIC to "Simple: solo parlante",
-            Config.MODE_SMART to "Inteligente: + salida de audio y batería",
-            Config.MODE_VOICE to "Asistente de voz (como Alexa)",
-        ).forEach { (mode, label) ->
-            val button = RadioButton(this).apply {
-                text = label
-                id = View.generateViewId()
-            }
-            modeButtons[mode] = button
-            modes.addView(button)
-        }
-        // Button ids are generated per creation, so restoring saved state after a rotation
-        // would check the wrong one and silently change the mode.
-        modes.isSaveEnabled = false
-        modeButtons.values.forEach { it.isSaveEnabled = false }
-        modes.check(modeButtons.getValue(cfg.mode).id)
-        modes.setOnCheckedChangeListener { _, checkedId ->
-            val chosen = modeButtons.entries.firstOrNull { it.value.id == checkedId }?.key ?: return@setOnCheckedChangeListener
-            if (chosen == cfg.mode) return@setOnCheckedChangeListener
-            cfg.mode = chosen
-            // the mode is sent when connecting: reconnect so Home Assistant updates its entities
-            if (SpeakerService.running) restartSpeaker()
-            refresh()
-        }
-
-        chimeLabel = TextView(this).apply { setPadding(0, pad, 0, 0) }
-        chimeSlider = SeekBar(this).apply {
-            max = 100
-            progress = cfg.chimeVolume
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(bar: SeekBar, value: Int, fromUser: Boolean) {
-                    chimeLabel.text = chimeText(value)
-                    if (fromUser) cfg.chimeVolume = value
+        setContent {
+            PhoneSpeakerTheme {
+                // re-read the service state a few times a second; actions bump [tick] to refresh at once
+                val state by produceState(snapshot(), tick) {
+                    while (true) {
+                        value = snapshot()
+                        delay(400)
+                    }
                 }
-                override fun onStartTrackingTouch(bar: SeekBar) {}
-                override fun onStopTrackingTouch(bar: SeekBar) = Chime.play(bar.progress) // preview
-            })
-        }
-        chimeLabel.text = chimeText(cfg.chimeVolume)
-        talkButton = Button(this).apply {
-            text = "Hablar"
-            setOnClickListener { SpeakerService.instance?.talk() }
-        }
-        toggle = Button(this).apply { setOnClickListener { onToggle() } }
-        unpair = Button(this).apply {
-            text = "Desemparejar"
-            setOnClickListener {
-                stopService(Intent(this@MainActivity, SpeakerService::class.java))
-                cfg.unpair()
-                status.text = ""
-                refresh()
+                PhoneSpeakerApp(state, this@MainActivity)
             }
         }
-        status = TextView(this).apply { setPadding(0, pad, 0, 0) }
-
-        listOf(address, code, pairButton, modes, chimeLabel, chimeSlider, talkButton, toggle, unpair, status)
-            .forEach(root::addView)
-        setContentView(android.widget.ScrollView(this).apply { addView(root) })
     }
 
-    override fun onResume() {
-        super.onResume()
-        refresher.run()
-    }
-
-    override fun onPause() {
-        status.removeCallbacks(refresher)
-        super.onPause()
+    private fun snapshot(): UiState {
+        val client = SpeakerService.client
+        val service = SpeakerService.instance
+        return UiState(
+            paired = cfg.paired,
+            running = SpeakerService.running,
+            connected = client?.connected == true,
+            error = client?.lastError,
+            phase = SpeakerService.voicePhase,
+            lastHeard = SpeakerService.lastHeard,
+            micLevel = SpeakerService.micLevel,
+            mode = cfg.mode,
+            chimeVolume = cfg.chimeVolume,
+            outputs = service?.outputNames() ?: listOf(AudioOutputs.DEFAULT),
+            currentOutput = service?.currentOutput() ?: AudioOutputs.DEFAULT,
+            baseUrl = cfg.baseUrl,
+            deviceName = cfg.deviceName,
+            version = packageManager.getPackageInfo(packageName, 0).versionName ?: "",
+        )
     }
 
     @Deprecated("Deprecated in Java")
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         // the microphone service type can only be declared once the permission exists
         if (cfg.voice && SpeakerService.running && SpeakerService.hasMicPermission(this)) restartSpeaker()
     }
 
-    private fun chimeText(volume: Int) =
-        if (volume == 0) "Volumen del pitido: apagado" else "Volumen del pitido: $volume%"
+    // ---- AppActions ----------------------------------------------------------------------
 
-    private fun onPair() {
-        val url = HaClient.normalizeUrl(address.text.toString())
-        val pairingCode = code.text.toString().trim()
-        if (url.isEmpty() || pairingCode.isEmpty()) {
-            status.text = "Escribe la dirección y el código."
-            return
-        }
-        status.text = "Emparejando..."
+    override fun pair(url: String, code: String, mode: String, done: (String?) -> Unit) {
+        val baseUrl = HaClient.normalizeUrl(url)
+        cfg.mode = mode
         thread {
-            val result = HaClient.pair(cfg, url, pairingCode)
+            val result = HaClient.pair(cfg, baseUrl, code.trim())
             runOnUiThread {
                 result
                     .onSuccess { token ->
-                        cfg.baseUrl = url
+                        cfg.baseUrl = baseUrl
                         cfg.token = token
-                        code.text.clear()
                         startSpeaker()
+                        done(null)
                     }
-                    .onFailure { status.text = it.message }
+                    .onFailure { done(it.message) }
+                tick++
             }
         }
     }
 
+    override fun toggleService() {
+        if (SpeakerService.running) stopService(Intent(this, SpeakerService::class.java)) else startSpeaker()
+        tick++
+    }
+
+    override fun talk() {
+        SpeakerService.instance?.talk()
+    }
+
+    override fun setMode(mode: String) {
+        if (mode == cfg.mode) return
+        cfg.mode = mode
+        // the mode is sent when connecting: reconnect so Home Assistant updates its entities
+        if (SpeakerService.running) restartSpeaker()
+        tick++
+    }
+
+    override fun setChimeVolume(volume: Int) {
+        cfg.chimeVolume = volume
+    }
+
+    override fun previewChime(volume: Int) = Chime.play(volume)
+
+    override fun chooseOutput(name: String) {
+        SpeakerService.instance?.chooseOutput(name)
+        tick++
+    }
+
+    override fun unpair() {
+        stopService(Intent(this, SpeakerService::class.java))
+        cfg.unpair()
+        tick++
+    }
+
     private fun startSpeaker() {
         ContextCompat.startForegroundService(this, Intent(this, SpeakerService::class.java))
-        status.postDelayed({ refresh() }, 500)
     }
 
     private fun restartSpeaker() {
         stopService(Intent(this, SpeakerService::class.java))
         startSpeaker()
-    }
-
-    private fun onToggle() {
-        if (SpeakerService.running) {
-            stopService(Intent(this, SpeakerService::class.java))
-            status.postDelayed({ refresh() }, 300)
-        } else {
-            startSpeaker()
-        }
-    }
-
-    private fun refresh() {
-        val paired = cfg.paired
-        val pairing = if (paired) View.GONE else View.VISIBLE
-        val operating = if (paired) View.VISIBLE else View.GONE
-        val voice = if (paired && cfg.voice) View.VISIBLE else View.GONE
-        address.visibility = pairing
-        code.visibility = pairing
-        pairButton.visibility = pairing
-        modes.visibility = View.VISIBLE // chosen before pairing: it decides which entities Home Assistant creates
-        toggle.visibility = operating
-        unpair.visibility = operating
-        talkButton.visibility = voice
-        chimeLabel.visibility = voice
-        chimeSlider.visibility = voice
-
-        if (!paired) {
-            if (status.text.isNullOrEmpty() || status.text == "Detenido.") {
-                status.text = "En Home Assistant: Ajustes > Dispositivos y servicios > Añadir integración > " +
-                    "Phone Speaker. Te mostrará un código para escribir aquí."
-            }
-            return
-        }
-        toggle.text = if (SpeakerService.running) "Detener" else "Iniciar"
-        val c = SpeakerService.client
-        val connection = when {
-            !SpeakerService.running -> "Detenido."
-            c?.connected == true -> "Conectado a ${cfg.baseUrl}."
-            else -> "Conectando a ${cfg.baseUrl}...\n${c?.lastError.orEmpty()}"
-        }
-        val voiceLine = if (cfg.voice && SpeakerService.running) {
-            "\n${SpeakerService.voiceStatus}\nNivel del micrófono: ${SpeakerService.micLevel}"
-        } else ""
-        status.text = connection + voiceLine
     }
 }

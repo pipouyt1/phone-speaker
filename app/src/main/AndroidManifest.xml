@@ -14,7 +14,8 @@
         android:allowBackup="false"
         android:label="Phone Speaker"
         android:usesCleartextTraffic="true"
-        android:theme="@style/Theme.AppCompat.DayNight">
+        android:icon="@mipmap/ic_launcher"
+        android:theme="@style/Theme.PhoneSpeaker">
 
         <activity
             android:name=".MainActivity"

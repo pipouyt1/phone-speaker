@@ -44,6 +44,12 @@ class SpeakerService : Service(), HaClient.Listener {
         /** Microphone loudness, 0-100, for checking that the microphone really hears something. */
         @Volatile var micLevel: Int = 0
             private set
+        /** What the assistant is doing, for the UI: idle, waiting, listening, thinking, speaking or error. */
+        @Volatile var voicePhase: String = "idle"
+            private set
+        /** The last thing Assist understood, as text. */
+        @Volatile var lastHeard: String = ""
+            private set
 
         fun hasMicPermission(ctx: android.content.Context) =
             ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
@@ -129,6 +135,7 @@ class SpeakerService : Service(), HaClient.Listener {
         running = false
         instance = null
         voiceStatus = ""
+        voicePhase = "idle"
         main.removeCallbacksAndMessages(null)
         capture?.stop()
         client?.stop()
@@ -181,6 +188,14 @@ class SpeakerService : Service(), HaClient.Listener {
         }
     }
 
+    /** Audio outputs the user can pick, "Default" first. */
+    fun outputNames(): List<String> =
+        listOf(AudioOutputs.DEFAULT) + AudioOutputs.list(getSystemService(AudioManager::class.java)).map { AudioOutputs.label(it) }
+
+    fun currentOutput(): String = selectedOutput
+
+    fun chooseOutput(name: String) = selectOutput(name)
+
     private fun selectOutput(name: String) {
         val audio = getSystemService(AudioManager::class.java)
         val device = AudioOutputs.list(audio).firstOrNull { AudioOutputs.label(it) == name }
@@ -219,6 +234,7 @@ class SpeakerService : Service(), HaClient.Listener {
         streaming = true
         runId++
         lastVoiceStart = SystemClock.elapsedRealtime()
+        voicePhase = if (stage == "wake_word") "waiting" else "listening"
         voiceStatus = if (stage == "wake_word") "Esperando la palabra de activación..." else "Escuchando..."
         client?.send(JSONObject().put("type", "voice_start").put("stage", stage).put("run", runId))
     }
@@ -285,17 +301,22 @@ class SpeakerService : Service(), HaClient.Listener {
 
     private fun handleVoiceEvent(msg: JSONObject) {
         when (msg.optString("event")) {
-            "wake_word" -> { voiceErrors = 0; voiceStatus = "Te escuché..."; chime() }
-            "listening" -> { voiceErrors = 0; voiceStatus = "Escuchando..." }
-            "heard" -> voiceStatus = "Escuché: \"${msg.optString("text")}\""
-            "thinking" -> voiceStatus = "Pensando..."
-            "speaking" -> voiceStatus = "Respondiendo..."
+            "wake_word" -> { voiceErrors = 0; voiceStatus = "Te escuché..."; voicePhase = "listening"; chime() }
+            "listening" -> { voiceErrors = 0; voiceStatus = "Escuchando..."; voicePhase = "listening" }
+            "heard" -> {
+                voiceStatus = "Escuché: \"${msg.optString("text")}\""
+                lastHeard = msg.optString("text")
+                voicePhase = "thinking"
+            }
+            "thinking" -> { voiceStatus = "Pensando..."; voicePhase = "thinking" }
+            "speaking" -> { voiceStatus = "Respondiendo..."; voicePhase = "speaking" }
             "error" -> {
                 voiceErrors++
                 val detail = msg.optString("message").ifEmpty { msg.optString("code") }
                 // keep listening and retry with a growing delay: the cause (e.g. a wake word
                 // engine that is still starting) usually fixes itself
                 voiceStatus = "Error de voz: $detail. Reintentando..."
+                voicePhase = "error"
             }
         }
     }
@@ -312,7 +333,7 @@ class SpeakerService : Service(), HaClient.Listener {
         if (announcePlaying) {
             announcePlaying = false
             sawAnnounceStart = false
-            if (!cfg.listen) voiceStatus = ""
+            if (!cfg.listen) { voiceStatus = ""; voicePhase = "idle" }
             maybeListen()
         }
     }
