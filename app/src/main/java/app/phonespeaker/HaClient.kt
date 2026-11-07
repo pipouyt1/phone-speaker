@@ -42,6 +42,14 @@ class HaClient(private val cfg: Config, private val listener: Listener) {
             return s
         }
 
+        /**
+         * Home Assistant sends its own files (TTS replies, local media, test sounds) as paths like
+         * "/api/tts_proxy/...". Resolve them against the address this phone already reaches Home
+         * Assistant at, so playback does not depend on the URL Home Assistant believes it has.
+         */
+        fun resolveMediaUrl(baseUrl: String, url: String): String =
+            if (url.startsWith("/")) baseUrl + url else url
+
         private fun wsUrl(baseUrl: String) = baseUrl.replaceFirst("http", "ws") + "/api/phone_speaker/ws"
 
         /** Exchange the pairing code for a device token. Blocking: call off the main thread. */

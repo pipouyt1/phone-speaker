@@ -155,7 +155,7 @@ class SpeakerService : Service(), HaClient.Listener {
         when (msg.optString("type")) {
             "play" -> msg.optString("url").takeIf { it.isNotEmpty() }?.let {
                 main.post { if (msg.optBoolean("announce")) beginAnnounce() }
-                p.play(it)
+                p.play(HaClient.resolveMediaUrl(cfg.baseUrl, it))
             }
             "resume" -> p.resume()
             "pause" -> p.pause()

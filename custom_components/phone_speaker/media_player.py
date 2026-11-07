@@ -79,7 +79,7 @@ class PhoneSpeakerPlayer(PhoneEntity, MediaPlayerEntity):
                 self.hass, media_id, self.entity_id
             )
             media_id = sourced.url
-        media_id = async_process_play_media_url(self.hass, media_id)
+        media_id = async_process_play_media_url(self.hass, media_id, allow_relative_url=True)
         await self.device.async_send(
             {
                 "type": "play",

@@ -256,7 +256,9 @@ class PhoneAssistSatellite(PhoneEntity, AssistSatelliteEntity):
         if event.type == PipelineEventType.TTS_END:
             tts_output = (event.data or {}).get("tts_output")
             if tts_output:
-                url = async_process_play_media_url(self.hass, tts_output["url"])
+                url = async_process_play_media_url(
+                    self.hass, tts_output["url"], allow_relative_url=True
+                )
                 self.device.entry.async_create_background_task(
                     self.hass, self._play_reply(url), "phone_speaker_tts"
                 )
@@ -286,9 +288,14 @@ class PhoneAssistSatellite(PhoneEntity, AssistSatelliteEntity):
         """Play an announcement, blocking until it has finished."""
         if announcement.preannounce_media_id:
             await self.device.async_play_and_wait(
-                async_process_play_media_url(self.hass, announcement.preannounce_media_id),
+                async_process_play_media_url(
+                    self.hass, announcement.preannounce_media_id, allow_relative_url=True
+                ),
                 announce=True,
             )
         await self.device.async_play_and_wait(
-            async_process_play_media_url(self.hass, announcement.media_id), announce=True
+            async_process_play_media_url(
+                self.hass, announcement.media_id, allow_relative_url=True
+            ),
+            announce=True,
         )
