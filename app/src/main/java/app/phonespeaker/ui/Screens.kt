@@ -8,6 +8,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
@@ -57,7 +60,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import app.phonespeaker.AudioOutputs
 import app.phonespeaker.Config
 
@@ -70,9 +75,21 @@ private enum class Tab(val label: String, val icon: ImageVector) {
 @Composable
 fun PhoneSpeakerApp(state: UiState, actions: AppActions) {
     Box(Modifier.fillMaxSize()) {
-        if (state.paired) MainTabs(state, actions) else OnboardingScreen(state, actions)
+        if (state.paired) {
+            MainTabs(state, actions)
+        } else {
+            CenteredContent { OnboardingScreen(state, actions) }
+        }
         // content sent from Home Assistant covers everything until it is closed
         state.display?.let { DisplayOverlay(it, actions::dismissDisplay) }
+    }
+}
+
+/** On wide screens (tablets, landscape) keep the content to a comfortable width, centered. */
+@Composable
+private fun CenteredContent(content: @Composable () -> Unit) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        Box(Modifier.widthIn(max = 640.dp).fillMaxSize()) { content() }
     }
 }
 
@@ -96,8 +113,8 @@ private fun MainTabs(state: UiState, actions: AppActions) {
         Box(Modifier.padding(padding).fillMaxSize()) {
             when (tab) {
                 Tab.Home -> HomeScreen(state, actions)
-                Tab.Sound -> SoundScreen(state, actions)
-                Tab.Connection -> ConnectionScreen(state, actions)
+                Tab.Sound -> CenteredContent { SoundScreen(state, actions) }
+                Tab.Connection -> CenteredContent { ConnectionScreen(state, actions) }
             }
         }
     }
@@ -107,6 +124,7 @@ private fun MainTabs(state: UiState, actions: AppActions) {
 
 @Composable
 private fun HomeScreen(state: UiState, actions: AppActions) {
+    var showApps by rememberSaveable { mutableStateOf(false) }
     val voice = state.mode == Config.MODE_VOICE
     val connecting = state.running && !state.connected
     val phase = if (state.running && state.connected && voice) state.phase else "idle"
@@ -124,39 +142,88 @@ private fun HomeScreen(state: UiState, actions: AppActions) {
         }
     }
 
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding().padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(20.dp),
-    ) {
-        Text(state.deviceName, style = MaterialTheme.typography.titleLarge)
-        ConnectionChip(state)
-        Spacer(Modifier.height(8.dp))
-        if (connecting) {
-            Box(Modifier.size(200.dp), contentAlignment = Alignment.Center) { LoadingIndicator(Modifier.size(96.dp)) }
-        } else {
-            VoiceOrb(phase = phase, micLevel = if (voice && state.running) state.micLevel else 0)
-        }
-        Text(title, style = MaterialTheme.typography.headlineMediumEmphasized, textAlign = TextAlign.Center)
-        Text(
-            subtitle,
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-        )
-        if (voice && state.lastHeard.isNotEmpty()) {
-            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Último comando", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("\"${state.lastHeard}\"", style = MaterialTheme.typography.bodyLarge)
+    Box(Modifier.fillMaxSize()) {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            // a tablet, or any screen that is wide and short: orb on one side, text and buttons on the other
+            val wide = maxWidth > maxHeight && maxWidth >= 600.dp
+            val orbSize = if (wide) minOf(maxHeight - 96.dp, 440.dp) else minOf(maxWidth * 0.62f, 320.dp)
+            val align = if (wide) Alignment.Start else Alignment.CenterHorizontally
+            val textAlign = if (wide) TextAlign.Start else TextAlign.Center
+
+            val orb: @Composable () -> Unit = {
+                if (connecting) {
+                    Box(Modifier.size(orbSize), contentAlignment = Alignment.Center) { LoadingIndicator(Modifier.size(96.dp)) }
+                } else {
+                    VoiceOrb(phase = phase, micLevel = if (voice && state.running) state.micLevel else 0, size = orbSize)
+                }
+            }
+            val info: @Composable ColumnScope.() -> Unit = {
+                HomeHeader(state, compact = wide)
+                Text(title, style = MaterialTheme.typography.headlineMediumEmphasized, textAlign = textAlign)
+                Text(subtitle, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = textAlign)
+                if (voice && state.lastHeard.isNotEmpty()) {
+                    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Último comando", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("\"${state.lastHeard}\"", style = MaterialTheme.typography.bodyLarge)
+                        }
+                    }
+                }
+                val buttonHeight = if (wide) 80.dp else 64.dp
+                when {
+                    !state.running -> BigButton("Iniciar", height = buttonHeight) { actions.toggleService() }
+                    voice -> BigButton("Hablar ahora", enabled = state.connected, height = buttonHeight) { actions.talk() }
+                }
+                if (state.launcher) {
+                    FilledTonalButton(
+                        onClick = { showApps = true },
+                        shapes = ButtonDefaults.shapes(),
+                        modifier = Modifier.fillMaxWidth().height(if (wide) 64.dp else 56.dp),
+                    ) { Text("Aplicaciones", style = MaterialTheme.typography.titleMedium) }
+                }
+            }
+
+            if (wide) {
+                Row(
+                    Modifier.fillMaxSize().statusBarsPadding().padding(horizontal = 40.dp, vertical = 24.dp),
+                    horizontalArrangement = Arrangement.spacedBy(48.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { orb() }
+                    Column(
+                        Modifier.weight(1f).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+                        horizontalAlignment = align,
+                        content = info,
+                    )
+                }
+            } else {
+                Column(
+                    Modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding().padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(20.dp),
+                ) {
+                    orb()
+                    info()
                 }
             }
         }
-        when {
-            !state.running -> BigButton("Iniciar") { actions.toggleService() }
-            voice -> BigButton("Hablar ahora", enabled = state.connected) { actions.talk() }
-        }
+        if (showApps) AppsOverlay { showApps = false }
     }
+}
+
+/** The device name and connection status, or the big clock in launcher mode. */
+@Composable
+private fun ColumnScope.HomeHeader(state: UiState, compact: Boolean) {
+    if (state.launcher) {
+        val now = rememberClock()
+        val clockSize = if (compact) 72.sp else 88.sp
+        Text(timeText(now), style = MaterialTheme.typography.displayLarge.copy(fontSize = clockSize, lineHeight = clockSize * 1.1f))
+        Text(dateText(now), style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    } else {
+        Text(state.deviceName, style = MaterialTheme.typography.titleLarge)
+    }
+    ConnectionChip(state)
 }
 
 @Composable
@@ -176,12 +243,12 @@ private fun ConnectionChip(state: UiState) {
 }
 
 @Composable
-private fun BigButton(text: String, enabled: Boolean = true, onClick: () -> Unit) {
+private fun BigButton(text: String, enabled: Boolean = true, height: Dp = 64.dp, onClick: () -> Unit) {
     Button(
         onClick = onClick,
         enabled = enabled,
         shapes = ButtonDefaults.shapes(),
-        modifier = Modifier.fillMaxWidth().height(64.dp),
+        modifier = Modifier.fillMaxWidth().height(height),
     ) { Text(text, style = MaterialTheme.typography.titleMedium) }
 }
 
@@ -246,7 +313,11 @@ private fun SoundScreen(state: UiState, actions: AppActions) {
 
         SectionCard("Pantalla") {
             Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                DisplaySwitch(state.displayEnabled, actions::setDisplayEnabled)
+                SwitchRow(
+                    "Mostrar contenido de Home Assistant",
+                    "Imágenes, videos, páginas web y mensajes que mandes a este dispositivo.",
+                    state.displayEnabled, actions::setDisplayEnabled,
+                )
                 if (state.displayEnabled && !state.overlayGranted) {
                     Text(
                         "Para que el contenido se abra solo cuando la app está cerrada, permite \"Mostrar sobre otras apps\".",
@@ -257,23 +328,34 @@ private fun SoundScreen(state: UiState, actions: AppActions) {
                         Text("Dar permiso")
                     }
                 }
+                SwitchRow(
+                    "Pantalla completa",
+                    "Oculta la barra de estado y los botones de navegación. Desliza desde el borde para verlos.",
+                    state.fullscreen, actions::setFullscreen,
+                )
+                SwitchRow(
+                    "Modo launcher",
+                    "La pantalla de inicio muestra un reloj grande y la lista de aplicaciones.",
+                    state.launcher, actions::setLauncher,
+                )
+                if (state.launcher) {
+                    FilledTonalButton(onClick = actions::openHomeSettings, shapes = ButtonDefaults.shapes()) {
+                        Text("Usar como pantalla de inicio")
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun DisplaySwitch(enabled: Boolean, onChange: (Boolean) -> Unit) {
+private fun SwitchRow(title: String, description: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Mostrar contenido de Home Assistant", Modifier.weight(1f))
-            Switch(checked = enabled, onCheckedChange = onChange)
+            Text(title, Modifier.weight(1f))
+            Switch(checked = checked, onCheckedChange = onChange)
         }
-        Text(
-            "Imágenes, videos, páginas web y mensajes que mandes a este teléfono.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -380,7 +462,11 @@ private fun OnboardingScreen(state: UiState, actions: AppActions) {
             Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 ModePicker(mode) { mode = it }
                 Text(modeDescription(mode), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                DisplaySwitch(display) { display = it }
+                SwitchRow(
+                    "Mostrar contenido de Home Assistant",
+                    "Imágenes, videos, páginas web y mensajes que mandes a este dispositivo.",
+                    display,
+                ) { display = it }
             }
         }
         SectionCard("2. Dirección de Home Assistant") {

@@ -9,6 +9,9 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -59,6 +62,23 @@ class MainActivity : ComponentActivity(), AppActions {
     override fun onStart() {
         super.onStart()
         SpeakerService.uiVisible = true
+        applyFullscreen(cfg.fullscreen)
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        // the system brings the bars back after some interactions: hide them again
+        if (hasFocus) applyFullscreen(cfg.fullscreen)
+    }
+
+    private fun applyFullscreen(on: Boolean) {
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        if (on) {
+            controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            controller.show(WindowInsetsCompat.Type.systemBars())
+        }
     }
 
     override fun onStop() {
@@ -94,6 +114,8 @@ class MainActivity : ComponentActivity(), AppActions {
             display = SpeakerService.screenItem,
             displayEnabled = cfg.display,
             overlayGranted = Settings.canDrawOverlays(this),
+            fullscreen = cfg.fullscreen,
+            launcher = cfg.launcher,
         )
     }
 
@@ -174,6 +196,21 @@ class MainActivity : ComponentActivity(), AppActions {
 
     override fun requestOverlayPermission() {
         startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+    }
+
+    override fun setFullscreen(enabled: Boolean) {
+        cfg.fullscreen = enabled
+        applyFullscreen(enabled)
+        tick++
+    }
+
+    override fun setLauncher(enabled: Boolean) {
+        cfg.launcher = enabled
+        tick++
+    }
+
+    override fun openHomeSettings() {
+        startActivity(Intent(Settings.ACTION_HOME_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
     override fun unpair() {

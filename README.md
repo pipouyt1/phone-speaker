@@ -84,6 +84,18 @@ Límites: para que el contenido se abra solo cuando la app está cerrada, Androi
 Una página web de HA pide iniciar sesión una vez dentro del teléfono. La pantalla muestra el
 contenido y se cierra, no es un panel interactivo permanente.
 
+## Tableta, pantalla completa y modo launcher
+
+- **Pensada para tableta:** en pantallas anchas el micrófono se muestra grande a un lado y, al
+  otro, el estado, el último comando y un botón **Hablar ahora** grande; en vertical todo va en
+  una columna con un micrófono grande.
+- **Pantalla completa** (Sonido > Pantalla): oculta la barra de estado y los botones de
+  navegación. Se desliza desde el borde para verlos un momento.
+- **Modo launcher** (Sonido > Pantalla): la pantalla de inicio muestra un reloj y la fecha
+  grandes y un botón **Aplicaciones** con todas las apps instaladas. **Usar como pantalla de
+  inicio** abre el selector de Android para elegir esta app como launcher predeterminado (la app
+  siempre se ofrece como opción de pantalla de inicio, pero solo lo es si la eliges).
+
 ## Instalar la integración en HA
 
 **Con HACS (recomendado):** HACS > menú de tres puntos > *Repositorios personalizados* >

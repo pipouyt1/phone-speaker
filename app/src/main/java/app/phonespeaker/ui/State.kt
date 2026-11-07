@@ -21,6 +21,8 @@ data class UiState(
     val display: DisplayItem?,
     val displayEnabled: Boolean,
     val overlayGranted: Boolean,
+    val fullscreen: Boolean,
+    val launcher: Boolean,
 )
 
 /** What the screens can ask the app to do. */
@@ -37,4 +39,8 @@ interface AppActions {
     fun setDisplayEnabled(enabled: Boolean)
     fun dismissDisplay()
     fun requestOverlayPermission()
+    fun setFullscreen(enabled: Boolean)
+    fun setLauncher(enabled: Boolean)
+    /** Open Android's "default home app" chooser. */
+    fun openHomeSettings()
 }

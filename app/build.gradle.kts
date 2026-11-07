@@ -12,8 +12,8 @@ android {
         applicationId = "app.phonespeaker"
         minSdk = 28
         targetSdk = 34
-        versionCode = 12
-        versionName = "0.5.0"
+        versionCode = 13
+        versionName = "0.6.0"
     }
 
     buildTypes {

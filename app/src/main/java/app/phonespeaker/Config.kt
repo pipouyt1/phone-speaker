@@ -53,6 +53,16 @@ class Config(private val ctx: Context) {
         get() = prefs.getBoolean("display", false)
         set(v) = prefs.edit().putBoolean("display", v).apply()
 
+    /** Hide the status and navigation bars (swipe from the edge to bring them back). */
+    var fullscreen: Boolean
+        get() = prefs.getBoolean("fullscreen", false)
+        set(v) = prefs.edit().putBoolean("fullscreen", v).apply()
+
+    /** Home screen with a big clock and an app list, for using the device as a launcher or wall display. */
+    var launcher: Boolean
+        get() = prefs.getBoolean("launcher", false)
+        set(v) = prefs.edit().putBoolean("launcher", v).apply()
+
     val smart: Boolean get() = mode != MODE_GENERIC
     val voice: Boolean get() = mode == MODE_VOICE
 
