@@ -2,10 +2,14 @@ package app.phonespeaker
 
 import android.Manifest
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.produceState
@@ -45,9 +49,28 @@ class MainActivity : ComponentActivity(), AppActions {
                         delay(400)
                     }
                 }
+                // content from Home Assistant: show over the lock screen and keep the screen on
+                LaunchedEffect(state.display != null) { applyDisplayWindow(state.display != null) }
                 PhoneSpeakerApp(state, this@MainActivity)
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        SpeakerService.uiVisible = true
+    }
+
+    override fun onStop() {
+        SpeakerService.uiVisible = false
+        super.onStop()
+    }
+
+    private fun applyDisplayWindow(active: Boolean) {
+        setShowWhenLocked(active)
+        setTurnScreenOn(active)
+        if (active) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
     private fun snapshot(): UiState {
@@ -68,6 +91,9 @@ class MainActivity : ComponentActivity(), AppActions {
             baseUrl = cfg.baseUrl,
             deviceName = cfg.deviceName,
             version = packageManager.getPackageInfo(packageName, 0).versionName ?: "",
+            display = SpeakerService.screenItem,
+            displayEnabled = cfg.display,
+            overlayGranted = Settings.canDrawOverlays(this),
         )
     }
 
@@ -80,9 +106,10 @@ class MainActivity : ComponentActivity(), AppActions {
 
     // ---- AppActions ----------------------------------------------------------------------
 
-    override fun pair(url: String, code: String, mode: String, done: (String?) -> Unit) {
+    override fun pair(url: String, code: String, mode: String, display: Boolean, done: (String?) -> Unit) {
         val baseUrl = HaClient.normalizeUrl(url)
         cfg.mode = mode
+        cfg.display = display
         thread {
             val result = HaClient.pair(cfg, baseUrl, code.trim())
             runOnUiThread {
@@ -130,6 +157,23 @@ class MainActivity : ComponentActivity(), AppActions {
     override fun chooseOutput(name: String) {
         SpeakerService.instance?.chooseOutput(name)
         tick++
+    }
+
+    override fun setDisplayEnabled(enabled: Boolean) {
+        if (enabled == cfg.display) return
+        cfg.display = enabled
+        // the option is sent when connecting: reconnect so Home Assistant adds or removes the entities
+        if (SpeakerService.running) restartSpeaker()
+        tick++
+    }
+
+    override fun dismissDisplay() {
+        SpeakerService.dismissDisplay()
+        tick++
+    }
+
+    override fun requestOverlayPermission() {
+        startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
     }
 
     override fun unpair() {

@@ -15,6 +15,8 @@ Son dos piezas:
 | **Inteligente** | lo anterior + `select` "Audio output" (altavoz, Bluetooth, cable, USB) + sensor de batería |
 | **Asistente de voz** | lo anterior + `assist_satellite` (micrófono, Assist, respuesta hablada) |
 
+La opción **Pantalla** (abajo) se suma a cualquiera de los tres.
+
 El audio sale por el ruteo normal de Android, así que un parlante Bluetooth emparejado al
 teléfono funciona eligiéndolo en el selector.
 
@@ -49,6 +51,38 @@ entidad también soporta el servicio `assist_satellite.announce`.
 Privacidad: con la escucha continua activa, todo el audio del micrófono viaja a tu HA (en tu red,
 o por Nabu Casa si usas esa dirección). Se procesa ahí y no se guarda salvo que lo configures así
 en el pipeline.
+
+## Pantalla (el teléfono como display)
+
+Opción aparte del modo: en la app, **Sonido > Pantalla > Mostrar contenido de Home Assistant**
+(también se elige al emparejar). Con ella activa, el teléfono muestra a pantalla completa lo que
+le mandes desde HA, y la integración agrega dos entidades: `notify` "Screen" y el botón
+"Close screen".
+
+- **Imágenes, videos y páginas web:** con `media_player.play_media` sobre el reproductor del teléfono.
+  `media_content_type` puede ser `image`, `video` (también acepta HLS, por ejemplo una cámara con
+  `media-source://camera/...`) o `url` para abrir una página web. Con `extra` puedes poner un
+  `title` y una `duration` en segundos (por defecto: imágenes y mensajes 30 s; videos y páginas
+  hasta que terminen o los cierres).
+- **Mensajes:** `notify.send_message` sobre la entidad "Screen", con `message` y `title`.
+- **Cerrar:** el botón "Close screen", o la X en la pantalla del teléfono.
+
+```yaml
+action: media_player.play_media
+target:
+  entity_id: media_player.mi_telefono
+data:
+  media_content_type: image
+  media_content_id: media-source://media_source/local/foto.jpg
+  extra:
+    title: Cámara del frente
+    duration: 20
+```
+
+Límites: para que el contenido se abra solo cuando la app está cerrada, Android exige el permiso
+"Mostrar sobre otras apps" (la app lo pide; sin él llega una notificación que lo abre al tocarla).
+Una página web de HA pide iniciar sesión una vez dentro del teléfono. La pantalla muestra el
+contenido y se cierra, no es un panel interactivo permanente.
 
 ## Instalar la integración en HA
 
@@ -107,6 +141,7 @@ esa serie (la 1.4.0 estable los oculta), así que pueden cambiar de API.
 - `POST /api/phone_speaker/pair` `{code, device_id, name, mode}` → `{token}`
 - WebSocket `/api/phone_speaker/ws`. Primer mensaje del teléfono:
   `{"type":"hello","token":...,"mode":...}` → HA responde `{"type":"hello_ok"}`.
+- Pantalla, HA → teléfono: `display {kind: image|video|web|text, url?, title?, text?, seconds?}` y `display_clear`.
 - Teléfono → HA: `{"type":"state","player":{state,volume,muted},"battery":N,"outputs":[...],"output":"..."}`
 - HA → teléfono: `play {url, announce}`, `pause`, `resume`, `stop`, `volume {level}`,
   `mute {muted}`, `output {name}`.

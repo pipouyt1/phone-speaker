@@ -16,6 +16,7 @@ from homeassistant.components.media_player import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import CONF_DEVICE_ID, DOMAIN
@@ -26,6 +27,18 @@ _STATES = {
     "paused": MediaPlayerState.PAUSED,
     "idle": MediaPlayerState.IDLE,
 }
+
+
+def _display_kind(content_type: str) -> str | None:
+    """What to show on the phone's screen for this content type, or None for plain audio."""
+    kind = content_type.lower()
+    if kind.startswith("image"):
+        return "image"
+    if kind.startswith("video") or kind in ("application/vnd.apple.mpegurl", "application/x-mpegurl"):
+        return "video"
+    if kind in ("url", "web", "text/html"):
+        return "web"
+    return None
 
 
 async def async_setup_entry(
@@ -74,11 +87,28 @@ class PhoneSpeakerPlayer(PhoneEntity, MediaPlayerEntity):
     async def async_play_media(
         self, media_type: MediaType | str, media_id: str, **kwargs: Any
     ) -> None:
+        mime: str | None = None
         if media_source.is_media_source_id(media_id):
             sourced = await media_source.async_resolve_media(
                 self.hass, media_id, self.entity_id
             )
             media_id = sourced.url
+            mime = sourced.mime_type
+
+        kind = _display_kind(mime or str(media_type))
+        if kind is not None:
+            if not self.device.display:
+                raise HomeAssistantError(
+                    "Turn on the screen option in the Phone Speaker app to show images, videos and web pages"
+                )
+            if kind != "web":  # a web page is opened as it is; Home Assistant's own files get signed
+                media_id = async_process_play_media_url(self.hass, media_id, allow_relative_url=True)
+            extra = kwargs.get("extra") or {}
+            await self.device.async_show(
+                kind, url=media_id, title=extra.get("title"), seconds=extra.get("duration")
+            )
+            return
+
         media_id = async_process_play_media_url(self.hass, media_id, allow_relative_url=True)
         await self.device.async_send(
             {
@@ -96,7 +126,9 @@ class PhoneSpeakerPlayer(PhoneEntity, MediaPlayerEntity):
         return await media_source.async_browse_media(
             self.hass,
             media_content_id,
-            content_filter=lambda item: item.media_content_type.startswith("audio/"),
+            content_filter=lambda item: item.media_content_type.startswith(
+                ("audio/", "image/", "video/") if self.device.display else ("audio/",)
+            ),
         )
 
     async def async_media_play(self) -> None:

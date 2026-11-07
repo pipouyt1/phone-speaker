@@ -16,6 +16,7 @@ from homeassistant.components.http import HomeAssistantView
 from homeassistant.core import HomeAssistant
 
 from .const import (
+    CONF_DISPLAY,
     CONF_MODE,
     DOMAIN,
     MODES,
@@ -79,7 +80,8 @@ class PairView(HomeAssistantView):
         device_id = _clean_str(body.get("device_id"), 64)
         name = _clean_str(body.get("name"), 64)
         mode = body.get("mode")
-        if not (code and device_id and name and mode in MODES):
+        display = body.get("display", False)
+        if not (code and device_id and name and mode in MODES and isinstance(display, bool)):
             return self.json_message("Missing or invalid fields", 400)
 
         pending: dict[str, dict[str, Any]] = data["pending"]
@@ -105,6 +107,7 @@ class PairView(HomeAssistantView):
             "device_id": device_id,
             "name": name,
             "mode": mode,
+            "display": display,
             "token": token,
         }
         return self.json({"token": token})
@@ -137,11 +140,19 @@ class WsView(HomeAssistantView):
             device = _find_device(hass, token)
             if device is not None:
                 mode = hello.get("mode")
-                if mode in MODES and mode != device.entry.data.get(CONF_MODE):
-                    # Entity set depends on the mode: update the entry, which reloads it,
-                    # and let the phone reconnect into the new device object.
+                display = hello.get("display", False) is True
+                if (
+                    mode in MODES and mode != device.entry.data.get(CONF_MODE)
+                ) or display != device.entry.data.get(CONF_DISPLAY, False):
+                    # The entity set depends on the mode and the display option: update the
+                    # entry, which reloads it, and let the phone reconnect into the new device.
                     hass.config_entries.async_update_entry(
-                        device.entry, data={**device.entry.data, CONF_MODE: mode}
+                        device.entry,
+                        data={
+                            **device.entry.data,
+                            CONF_MODE: mode if mode in MODES else device.entry.data[CONF_MODE],
+                            CONF_DISPLAY: display,
+                        },
                     )
                     await ws.close(code=4000, message=b"mode changed")
                     device = None

@@ -43,6 +43,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.ToggleButtonDefaults
@@ -68,10 +69,15 @@ private enum class Tab(val label: String, val icon: ImageVector) {
 
 @Composable
 fun PhoneSpeakerApp(state: UiState, actions: AppActions) {
-    if (!state.paired) {
-        OnboardingScreen(state, actions)
-        return
+    Box(Modifier.fillMaxSize()) {
+        if (state.paired) MainTabs(state, actions) else OnboardingScreen(state, actions)
+        // content sent from Home Assistant covers everything until it is closed
+        state.display?.let { DisplayOverlay(it, actions::dismissDisplay) }
     }
+}
+
+@Composable
+private fun MainTabs(state: UiState, actions: AppActions) {
     var tab by rememberSaveable { mutableStateOf(Tab.Home) }
     Scaffold(
         bottomBar = {
@@ -237,6 +243,37 @@ private fun SoundScreen(state: UiState, actions: AppActions) {
                 )
             }
         }
+
+        SectionCard("Pantalla") {
+            Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                DisplaySwitch(state.displayEnabled, actions::setDisplayEnabled)
+                if (state.displayEnabled && !state.overlayGranted) {
+                    Text(
+                        "Para que el contenido se abra solo cuando la app está cerrada, permite \"Mostrar sobre otras apps\".",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    FilledTonalButton(onClick = actions::requestOverlayPermission, shapes = ButtonDefaults.shapes()) {
+                        Text("Dar permiso")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DisplaySwitch(enabled: Boolean, onChange: (Boolean) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Mostrar contenido de Home Assistant", Modifier.weight(1f))
+            Switch(checked = enabled, onCheckedChange = onChange)
+        }
+        Text(
+            "Imágenes, videos, páginas web y mensajes que mandes a este teléfono.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -323,6 +360,7 @@ private fun ConnectionScreen(state: UiState, actions: AppActions) {
 @Composable
 private fun OnboardingScreen(state: UiState, actions: AppActions) {
     var mode by rememberSaveable { mutableStateOf(state.mode) }
+    var display by rememberSaveable { mutableStateOf(state.displayEnabled) }
     var address by rememberSaveable { mutableStateOf(state.baseUrl) }
     var code by rememberSaveable { mutableStateOf("") }
     var busy by rememberSaveable { mutableStateOf(false) }
@@ -342,6 +380,7 @@ private fun OnboardingScreen(state: UiState, actions: AppActions) {
             Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 ModePicker(mode) { mode = it }
                 Text(modeDescription(mode), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                DisplaySwitch(display) { display = it }
             }
         }
         SectionCard("2. Dirección de Home Assistant") {
@@ -362,7 +401,7 @@ private fun OnboardingScreen(state: UiState, actions: AppActions) {
             onClick = {
                 busy = true
                 error = null
-                actions.pair(address, code, mode) { problem -> busy = false; error = problem }
+                actions.pair(address, code, mode, display) { problem -> busy = false; error = problem }
             },
             enabled = !busy && address.isNotBlank() && code.length == 6,
             shapes = ButtonDefaults.shapes(),

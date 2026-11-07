@@ -5,6 +5,7 @@ DOMAIN = "phone_speaker"
 CONF_DEVICE_ID = "device_id"
 CONF_TOKEN = "token"
 CONF_MODE = "mode"
+CONF_DISPLAY = "display"  # the phone's screen can show content sent from Home Assistant
 
 MODE_GENERIC = "generic"  # media_player only
 MODE_SMART = "smart"  # + audio output select and battery sensor

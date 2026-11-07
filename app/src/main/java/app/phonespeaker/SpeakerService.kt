@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -15,6 +16,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.SystemClock
+import android.provider.Settings
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
@@ -47,6 +49,14 @@ class SpeakerService : Service(), HaClient.Listener {
         /** What the assistant is doing, for the UI: idle, waiting, listening, thinking, speaking or error. */
         @Volatile var voicePhase: String = "idle"
             private set
+        /** What Home Assistant asked the screen to show right now, if anything. */
+        @Volatile var screenItem: DisplayItem? = null
+            private set
+        /** True while the app's screen is in the foreground (set by the activity). */
+        @Volatile var uiVisible: Boolean = false
+
+        fun dismissDisplay() { screenItem = null }
+
         /** The last thing Assist understood, as text. */
         @Volatile var lastHeard: String = ""
             private set
@@ -136,6 +146,7 @@ class SpeakerService : Service(), HaClient.Listener {
         instance = null
         voiceStatus = ""
         voicePhase = "idle"
+        screenItem = null
         main.removeCallbacksAndMessages(null)
         capture?.stop()
         client?.stop()
@@ -175,6 +186,8 @@ class SpeakerService : Service(), HaClient.Listener {
             "volume" -> p.setVolume(msg.optDouble("level", p.volume.toDouble()).toFloat())
             "mute" -> p.setMuted(msg.optBoolean("muted"))
             "output" -> selectOutput(msg.optString("name"))
+            "display" -> showDisplay(msg)
+            "display_clear" -> screenItem = null
             "attached" -> main.post {
                 // Home Assistant just created our device: it ignored everything sent until now
                 streaming = false
@@ -202,6 +215,52 @@ class SpeakerService : Service(), HaClient.Listener {
     fun currentOutput(): String = selectedOutput
 
     fun chooseOutput(name: String) = selectOutput(name)
+
+    // ---- screen --------------------------------------------------------------------------
+
+    private fun showDisplay(msg: JSONObject) {
+        val kind = msg.optString("kind")
+        if (kind !in setOf("image", "video", "web", "text")) return
+        val defaultSeconds = if (kind == "image" || kind == "text") 30 else 0
+        val item = DisplayItem(
+            id = SystemClock.elapsedRealtime(),
+            kind = kind,
+            url = HaClient.resolveMediaUrl(cfg.baseUrl, msg.optString("url")),
+            title = msg.optString("title"),
+            text = msg.optString("text"),
+            seconds = if (msg.has("seconds")) msg.optInt("seconds") else defaultSeconds,
+        )
+        screenItem = item
+        main.post { bringToFront(item) }
+    }
+
+    /**
+     * Put the app in front so the content is seen. Android only lets an app in the background open
+     * its screen if it may draw over other apps; without that, a notification opens it instead.
+     */
+    private fun bringToFront(item: DisplayItem) {
+        if (uiVisible) return
+        val open = Intent(this, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+        if (Settings.canDrawOverlays(this)) {
+            startActivity(open)
+            return
+        }
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.createNotificationChannel(NotificationChannel("display", "Contenido en pantalla", NotificationManager.IMPORTANCE_HIGH))
+        val tap = PendingIntent.getActivity(this, 0, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        nm.notify(
+            2,
+            NotificationCompat.Builder(this, "display")
+                .setSmallIcon(android.R.drawable.stat_sys_headset)
+                .setContentTitle(item.title.ifEmpty { "Contenido de Home Assistant" })
+                .setContentText(if (item.kind == "text") item.text else "Toca para verlo")
+                .setContentIntent(tap)
+                .setAutoCancel(true)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .build(),
+        )
+    }
 
     private fun selectOutput(name: String) {
         val audio = getSystemService(AudioManager::class.java)

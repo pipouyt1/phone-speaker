@@ -14,7 +14,14 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
 
-from .const import CONF_DEVICE_ID, CONF_MODE, CONF_TOKEN, DOMAIN, PLAYBACK_TIMEOUT
+from .const import (
+    CONF_DEVICE_ID,
+    CONF_DISPLAY,
+    CONF_MODE,
+    CONF_TOKEN,
+    DOMAIN,
+    PLAYBACK_TIMEOUT,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -32,6 +39,7 @@ class PhoneDevice:
         self.device_id: str = entry.data[CONF_DEVICE_ID]
         self.token: str = entry.data[CONF_TOKEN]
         self.mode: str = entry.data[CONF_MODE]
+        self.display: bool = bool(entry.data.get(CONF_DISPLAY, False))
         self.name: str = entry.title
         self.manufacturer: str | None = None
         self.model: str | None = None
@@ -165,6 +173,25 @@ class PhoneDevice:
                 self._playback_done = None
         if self._play_failed:
             raise HomeAssistantError(f"{self.name} could not play {url}")
+
+    async def async_show(
+        self,
+        kind: str,
+        *,
+        url: str | None = None,
+        title: str | None = None,
+        text: str | None = None,
+        seconds: int | None = None,
+    ) -> None:
+        """Show something on the phone's screen: kind is image, video, web or text."""
+        payload: dict[str, Any] = {"type": "display", "kind": kind}
+        for key, value in (("url", url), ("title", title), ("text", text), ("seconds", seconds)):
+            if value is not None:
+                payload[key] = value
+        await self.async_send(payload)
+
+    async def async_clear_display(self) -> None:
+        await self.async_send({"type": "display_clear"})
 
     async def async_close(self) -> None:
         if self.ws is not None and not self.ws.closed:

@@ -30,6 +30,9 @@ class HaClient(private val cfg: Config, private val listener: Listener) {
         private const val TAG = "PhoneSpeaker"
         private val JSON = "application/json".toMediaType()
 
+        /** Shared HTTP client (also used to download images for the screen). */
+        val httpClient: OkHttpClient get() = http
+
         private val http = OkHttpClient.Builder()
             .pingInterval(30, TimeUnit.SECONDS)
             .connectTimeout(10, TimeUnit.SECONDS)
@@ -59,6 +62,7 @@ class HaClient(private val cfg: Config, private val listener: Listener) {
                 .put("device_id", cfg.deviceId)
                 .put("name", cfg.deviceName)
                 .put("mode", cfg.mode)
+                .put("display", cfg.display)
                 .toString()
                 .toRequestBody(JSON)
             return try {
@@ -117,6 +121,7 @@ class HaClient(private val cfg: Config, private val listener: Listener) {
                     .put("type", "hello")
                     .put("token", cfg.token)
                     .put("mode", cfg.mode)
+                    .put("display", cfg.display)
                     .put("manufacturer", android.os.Build.MANUFACTURER)
                     .put("model", android.os.Build.MODEL)
                 webSocket.send(hello.toString())

@@ -11,7 +11,7 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.typing import ConfigType
 
-from .const import CONF_DEVICE_ID, CONF_MODE, DOMAIN, MODE_GENERIC, MODE_VOICE
+from .const import CONF_DEVICE_ID, CONF_DISPLAY, CONF_MODE, DOMAIN, MODE_GENERIC, MODE_VOICE
 from .device import PhoneDevice
 from .http import async_ensure_http
 
@@ -24,6 +24,8 @@ def _platforms(entry: ConfigEntry) -> list[Platform]:
         platforms += [Platform.SELECT, Platform.SENSOR]
     if mode == MODE_VOICE:
         platforms.append(Platform.ASSIST_SATELLITE)
+    if entry.data.get(CONF_DISPLAY):
+        platforms += [Platform.NOTIFY, Platform.BUTTON]
     return platforms
 
 

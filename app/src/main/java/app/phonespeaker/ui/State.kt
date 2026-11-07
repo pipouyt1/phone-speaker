@@ -1,5 +1,7 @@
 package app.phonespeaker.ui
 
+import app.phonespeaker.DisplayItem
+
 /** Everything the screens show, read from the service and the saved settings. */
 data class UiState(
     val paired: Boolean,
@@ -16,12 +18,15 @@ data class UiState(
     val baseUrl: String,
     val deviceName: String,
     val version: String,
+    val display: DisplayItem?,
+    val displayEnabled: Boolean,
+    val overlayGranted: Boolean,
 )
 
 /** What the screens can ask the app to do. */
 interface AppActions {
     /** Pair with Home Assistant; [done] gets null on success or the error text. */
-    fun pair(url: String, code: String, mode: String, done: (String?) -> Unit)
+    fun pair(url: String, code: String, mode: String, display: Boolean, done: (String?) -> Unit)
     fun toggleService()
     fun talk()
     fun setMode(mode: String)
@@ -29,4 +34,7 @@ interface AppActions {
     fun previewChime(volume: Int)
     fun chooseOutput(name: String)
     fun unpair()
+    fun setDisplayEnabled(enabled: Boolean)
+    fun dismissDisplay()
+    fun requestOverlayPermission()
 }

@@ -48,6 +48,11 @@ class Config(private val ctx: Context) {
         get() = prefs.getInt("chime_volume", 80)
         set(v) = prefs.edit().putInt("chime_volume", v.coerceIn(0, 100)).apply()
 
+    /** Show images, videos, web pages and messages that Home Assistant sends to this screen. */
+    var display: Boolean
+        get() = prefs.getBoolean("display", false)
+        set(v) = prefs.edit().putBoolean("display", v).apply()
+
     val smart: Boolean get() = mode != MODE_GENERIC
     val voice: Boolean get() = mode == MODE_VOICE
 

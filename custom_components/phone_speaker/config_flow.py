@@ -13,6 +13,7 @@ from homeassistant.helpers.network import NoURLAvailableError, get_url
 
 from .const import (
     CONF_DEVICE_ID,
+    CONF_DISPLAY,
     CONF_MODE,
     CONF_TOKEN,
     DOMAIN,
@@ -51,6 +52,7 @@ class PhoneSpeakerConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_DEVICE_ID: result["device_id"],
                     CONF_TOKEN: result["token"],
                     CONF_MODE: result["mode"],
+                    CONF_DISPLAY: result.get("display", False),
                 }
                 await self.async_set_unique_id(result["device_id"])
                 # Pairing the same phone again just replaces its token and mode.
