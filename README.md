@@ -81,15 +81,26 @@ integración en HA o toca **Desemparejar** en la app.
 Para que Android no cierre el servicio, desactiva la optimización de batería para la app y,
 si el teléfono queda fijo, déjalo enchufado.
 
+## La app
+
+Interfaz con Material 3 Expressive (Jetpack Compose): colores dinámicos, movimiento con resortes,
+un orbe que cambia de forma según lo que hace el asistente (espera, escucha, piensa, responde) y
+se agranda con el volumen del micrófono, y tres pestañas: **Inicio** (estado, último comando,
+botón Hablar), **Sonido** (salida de audio, volumen del pitido, modo) y **Conexión**. El primer uso
+es una pantalla guiada de tres pasos. Al abrir la app el parlante arranca solo, salvo que lo hayas
+detenido tú.
+
 ## Compilar
 
-Android Studio, o por línea de comandos con JDK 17 y Gradle 8.9:
+Android Studio, o por línea de comandos con JDK 17 y Gradle 8.13:
 
 ```
 gradle :app:assembleDebug
 ```
 
-`compileSdk`/`targetSdk` 34, `minSdk` 28.
+`compileSdk` 36, `targetSdk` 34, `minSdk` 28. Android Gradle Plugin 8.9.2, Kotlin 2.1.21 y
+Material 3 `1.5.0-alpha10`: los componentes expresivos solo son públicos en las versiones alfa de
+esa serie (la 1.4.0 estable los oculta), así que pueden cambiar de API.
 
 ## Protocolo (app ↔ integración)
 

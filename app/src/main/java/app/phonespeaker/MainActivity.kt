@@ -33,6 +33,9 @@ class MainActivity : ComponentActivity(), AppActions {
                 Manifest.permission.RECORD_AUDIO,
             ), 1
         )
+        // after an update or a reboot the service is not running: bring the speaker back unless
+        // the user stopped it on purpose
+        if (cfg.paired && !SpeakerService.running && !cfg.userStopped) startSpeaker()
         setContent {
             PhoneSpeakerTheme {
                 // re-read the service state a few times a second; actions bump [tick] to refresh at once
@@ -97,7 +100,12 @@ class MainActivity : ComponentActivity(), AppActions {
     }
 
     override fun toggleService() {
-        if (SpeakerService.running) stopService(Intent(this, SpeakerService::class.java)) else startSpeaker()
+        if (SpeakerService.running) {
+            cfg.userStopped = true
+            stopService(Intent(this, SpeakerService::class.java))
+        } else {
+            startSpeaker()
+        }
         tick++
     }
 
@@ -131,6 +139,7 @@ class MainActivity : ComponentActivity(), AppActions {
     }
 
     private fun startSpeaker() {
+        cfg.userStopped = false
         ContextCompat.startForegroundService(this, Intent(this, SpeakerService::class.java))
     }
 

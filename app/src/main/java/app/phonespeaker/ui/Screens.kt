@@ -45,6 +45,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.ToggleButton
+import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -264,6 +265,8 @@ private fun ModePicker(mode: String, onChange: (String) -> Unit) {
                 checked = mode == value,
                 onCheckedChange = { onChange(value) },
                 modifier = Modifier.weight(1f),
+                // the card is surfaceContainer: give unselected buttons their own fill so they read as buttons
+                colors = ToggleButtonDefaults.toggleButtonColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHighest),
                 shapes = when (index) {
                     0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
                     options.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()

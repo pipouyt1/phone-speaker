@@ -51,6 +51,11 @@ class Config(private val ctx: Context) {
     val smart: Boolean get() = mode != MODE_GENERIC
     val voice: Boolean get() = mode == MODE_VOICE
 
+    /** True once the user stopped the speaker on purpose: opening the app then does not restart it. */
+    var userStopped: Boolean
+        get() = prefs.getBoolean("user_stopped", false)
+        set(v) = prefs.edit().putBoolean("user_stopped", v).apply()
+
     val paired: Boolean get() = baseUrl.isNotEmpty() && token.isNotEmpty()
 
     val deviceName: String get() = Build.MODEL
@@ -59,6 +64,6 @@ class Config(private val ctx: Context) {
         get() = "android-" + (Settings.Secure.getString(ctx.contentResolver, Settings.Secure.ANDROID_ID) ?: "unknown")
 
     fun unpair() {
-        prefs.edit().remove("token").apply()
+        prefs.edit().remove("token").remove("user_stopped").apply()
     }
 }
