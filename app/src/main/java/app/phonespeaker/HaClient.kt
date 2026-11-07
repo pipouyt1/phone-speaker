@@ -10,6 +10,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import okio.ByteString.Companion.toByteString
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
@@ -94,6 +95,10 @@ class HaClient(private val cfg: Config, private val listener: Listener) {
     }
 
     fun send(msg: JSONObject): Boolean = connected && ws?.send(msg.toString()) == true
+
+    /** Binary frame with microphone audio (16 kHz mono 16-bit PCM). */
+    fun sendAudio(chunk: ByteArray, length: Int): Boolean =
+        connected && ws?.send(chunk.toByteString(0, length)) == true
 
     private fun connect() {
         if (!running) return

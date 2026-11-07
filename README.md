@@ -1,19 +1,43 @@
 # Phone Speaker
 
-Usa un teléfono Android como parlante de Home Assistant. Son dos piezas:
+Usa un teléfono Android como parlante, y como parlante inteligente (tipo Alexa), de Home Assistant.
+Son dos piezas:
 
 - `app/`: la app Android. **El teléfono se conecta a HA** (WebSocket), no al revés, así que
   funciona aunque HA no pueda abrir conexiones hacia el teléfono (doble NAT, VLANs, etc.).
-- `custom_components/phone_speaker/`: la integración de HA. Crea el
-  `media_player` y, en modo inteligente, un selector de salida de audio y un sensor de batería.
+- `custom_components/phone_speaker/`: la integración de HA.
 
-Modos (se elige en la app):
-- **Genérico**: solo el `media_player` (reproducir URL/TTS/medios, pausa, stop, volumen, mute).
-- **Inteligente**: además `select` "Audio output" (altavoz, Bluetooth emparejado, cable, USB)
-  y sensor de batería.
+## Modos (se elige en la app)
+
+| Modo | Entidades en HA |
+|---|---|
+| **Simple** | `media_player` (reproducir URL/TTS/medios, pausa, stop, volumen, mute) |
+| **Inteligente** | lo anterior + `select` "Audio output" (altavoz, Bluetooth, cable, USB) + sensor de batería |
+| **Asistente de voz** | lo anterior + `assist_satellite` (micrófono, Assist, respuesta hablada) |
 
 El audio sale por el ruteo normal de Android, así que un parlante Bluetooth emparejado al
 teléfono funciona eligiéndolo en el selector.
+
+## Asistente de voz
+
+El teléfono transmite el micrófono (16 kHz, mono, con cancelación de eco) a un pipeline de
+Assist de HA y reproduce la respuesta. Hay dos formas de empezar una conversación:
+
+- **Botón "Hablar"** en la app: la conversación empieza al tocarlo y HA detecta cuándo dejas de
+  hablar. Funciona con solo tener voz a texto y texto a voz en el pipeline (por ejemplo, Home
+  Assistant Cloud).
+- **Escucha continua** (interruptor en la app): el teléfono transmite el micrófono sin parar y
+  **el motor de palabra de activación del pipeline de Assist** detecta la palabra. Requiere uno
+  en HA, por ejemplo el complemento **openWakeWord** (Ajustes > Complementos), y elegirlo como
+  palabra de activación en el pipeline (Ajustes > Voz asistentes). Si falla 3 veces seguidas, la
+  app desactiva la escucha continua sola y te avisa.
+
+Mientras suena una respuesta, el teléfono no envía el micrófono, para no oírse a sí mismo. La
+entidad también soporta el servicio `assist_satellite.announce`.
+
+Privacidad: con la escucha continua activa, todo el audio del micrófono viaja a tu HA (en tu red,
+o por Nabu Casa si usas esa dirección). Se procesa ahí y no se guarda salvo que lo configures así
+en el pipeline.
 
 ## Instalar la integración en HA
 
@@ -37,9 +61,13 @@ Después, en cualquiera de los dos casos:
 2. Abre la app, escribe la dirección de HA (por ejemplo `192.168.1.50`, o `192.168.1.50:8123`,
    o una URL `https://...`) y el código. Toca **Emparejar**.
 3. En HA pulsa **Enviar**. El teléfono aparece como dispositivo con sus entidades.
+4. Elige el modo. Para el asistente de voz, da el permiso del micrófono cuando lo pida.
 
 La app guarda un token propio del dispositivo (no tu token de HA). Para revocarlo, borra la
 integración en HA o toca **Desemparejar** en la app.
+
+Para que Android no cierre el servicio, desactiva la optimización de batería para la app y,
+si el teléfono queda fijo, déjalo enchufado.
 
 ## Compilar
 
@@ -59,12 +87,20 @@ gradle :app:assembleDebug
 - Teléfono → HA: `{"type":"state","player":{state,volume,muted},"battery":N,"outputs":[...],"output":"..."}`
 - HA → teléfono: `play {url, announce}`, `pause`, `resume`, `stop`, `volume {level}`,
   `mute {muted}`, `output {name}`.
+- Voz, teléfono → HA: `voice_start {stage: "stt"|"wake_word"}`, luego **frames binarios** de audio
+  PCM de 16 bits, y `voice_stop`.
+- Voz, HA → teléfono: `voice_event {event, text?, message?}` y `voice_end` (HA terminó de usar el audio).
 
 ## Estado y límites
 
-- La app compila y el servidor se probó con un cliente simulado. Falta probarlo contra tu HA real.
-- Los anuncios (`announce`) suenan como reproducción normal, sin bajar el volumen de lo que suena.
+- Probado: la app contra un servidor de prueba con el código real de la integración (emparejar,
+  reproducir, voz de extremo a extremo, escucha continua), y la integración importada e
+  instanciada contra el código de Home Assistant 2026.11.0.
+- Sin probar dentro de un HA en ejecución: el flujo de configuración y las entidades de voz con un
+  pipeline de Assist real. Si algo falla, abre un issue con el log de HA.
+- Los anuncios (`announce`) no bajan el volumen de lo que ya suena.
 - Usa `MediaPlayer` simple; para más formatos (HLS, etc.) habría que pasar a Media3/ExoPlayer.
-- Sin micrófono/Assist ni proxy BLE todavía.
-- Si Android cierra el servicio, desactiva la optimización de batería para la app.
+- La palabra de activación no se detecta en el teléfono, sino en HA (consume algo de red y batería).
+- En Android 14+ el servicio con micrófono solo puede iniciarse con la app abierta; si Android lo
+  reinicia en segundo plano, cae a modo sin micrófono hasta que abras la app.
 - `legacy-esphome/` conserva el primer intento (API nativa de ESPHome), fuera de la compilación.

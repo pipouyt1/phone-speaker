@@ -7,14 +7,14 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import CONF_DEVICE_ID, CONF_MODE, DOMAIN, MODE_SMART
+from .const import CONF_DEVICE_ID, CONF_MODE, DOMAIN, MODE_GENERIC
 from .entity import PhoneEntity
 
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    if entry.data[CONF_MODE] != MODE_SMART:
+    if entry.data[CONF_MODE] == MODE_GENERIC:
         return
     device = hass.data[DOMAIN]["devices"][entry.data[CONF_DEVICE_ID]]
     async_add_entities([AudioOutputSelect(device)])

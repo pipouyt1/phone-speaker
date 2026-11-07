@@ -6,6 +6,12 @@ import android.provider.Settings
 
 /** Pairing result and user choices, persisted in SharedPreferences. */
 class Config(private val ctx: Context) {
+    companion object {
+        const val MODE_GENERIC = "generic"
+        const val MODE_SMART = "smart"
+        const val MODE_VOICE = "voice"
+    }
+
     private val prefs = ctx.getSharedPreferences("phone_speaker", Context.MODE_PRIVATE)
 
     var baseUrl: String
@@ -16,14 +22,24 @@ class Config(private val ctx: Context) {
         get() = prefs.getString("token", "") ?: ""
         set(v) = prefs.edit().putString("token", v).apply()
 
-    /** Smart mode adds the audio output selector and battery sensor in Home Assistant. */
-    var smart: Boolean
-        get() = prefs.getBoolean("smart", true)
-        set(v) = prefs.edit().putBoolean("smart", v).apply()
+    /**
+     * generic: media player only. smart: + audio output selector and battery sensor.
+     * voice: smart + microphone and voice assistant (Assist satellite).
+     */
+    var mode: String
+        get() = prefs.getString("mode", null)
+            ?: if (prefs.getBoolean("smart", true)) MODE_SMART else MODE_GENERIC
+        set(v) = prefs.edit().putString("mode", v).apply()
+
+    /** Keep the microphone open and let Home Assistant's wake word engine listen. */
+    var listen: Boolean
+        get() = prefs.getBoolean("listen", false)
+        set(v) = prefs.edit().putBoolean("listen", v).apply()
+
+    val smart: Boolean get() = mode != MODE_GENERIC
+    val voice: Boolean get() = mode == MODE_VOICE
 
     val paired: Boolean get() = baseUrl.isNotEmpty() && token.isNotEmpty()
-
-    val mode: String get() = if (smart) "smart" else "generic"
 
     val deviceName: String get() = Build.MODEL
 

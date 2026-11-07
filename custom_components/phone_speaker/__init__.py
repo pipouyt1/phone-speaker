@@ -11,11 +11,20 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.typing import ConfigType
 
-from .const import CONF_DEVICE_ID, DOMAIN
+from .const import CONF_DEVICE_ID, CONF_MODE, DOMAIN, MODE_GENERIC, MODE_VOICE
 from .device import PhoneDevice
 from .http import async_ensure_http
 
-PLATFORMS = [Platform.MEDIA_PLAYER, Platform.SELECT, Platform.SENSOR]
+
+def _platforms(entry: ConfigEntry) -> list[Platform]:
+    """Entity platforms for the phone's mode (a mode change reloads the entry)."""
+    mode = entry.data[CONF_MODE]
+    platforms = [Platform.MEDIA_PLAYER]
+    if mode != MODE_GENERIC:
+        platforms += [Platform.SELECT, Platform.SENSOR]
+    if mode == MODE_VOICE:
+        platforms.append(Platform.ASSIST_SATELLITE)
+    return platforms
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -27,13 +36,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await async_ensure_http(hass)
     device = PhoneDevice(hass, entry)
     hass.data[DOMAIN]["devices"][device.device_id] = device
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    await hass.config_entries.async_forward_entry_setups(entry, _platforms(entry))
     entry.async_on_unload(entry.add_update_listener(_async_reload))
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unloaded = await hass.config_entries.async_unload_platforms(entry, _platforms(entry))
     if unloaded:
         device = hass.data[DOMAIN]["devices"].pop(entry.data[CONF_DEVICE_ID], None)
         if device is not None:

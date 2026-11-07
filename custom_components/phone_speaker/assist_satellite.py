@@ -1,0 +1,190 @@
+"""Assist satellite: the phone's microphone and speaker as a voice assistant (voice mode)."""
+
+from __future__ import annotations
+
+import asyncio
+from collections.abc import AsyncIterator
+import logging
+from typing import Any
+
+from homeassistant.components.assist_pipeline import (
+    PipelineEvent,
+    PipelineEventType,
+    PipelineStage,
+)
+from homeassistant.components.assist_satellite import (
+    AssistSatelliteAnnouncement,
+    AssistSatelliteConfiguration,
+    AssistSatelliteEntity,
+    AssistSatelliteEntityDescription,
+    AssistSatelliteEntityFeature,
+)
+from homeassistant.components.media_player import async_process_play_media_url
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
+from .const import CONF_DEVICE_ID, CONF_MODE, DOMAIN, MODE_VOICE, VOICE_QUEUE_CHUNKS
+from .device import PhoneDevice
+from .entity import PhoneEntity
+
+_LOGGER = logging.getLogger(__name__)
+
+# pipeline event -> short name shown on the phone
+_EVENTS = {
+    PipelineEventType.WAKE_WORD_END: "wake_word",
+    PipelineEventType.STT_START: "listening",
+    PipelineEventType.STT_END: "heard",
+    PipelineEventType.INTENT_START: "thinking",
+    PipelineEventType.TTS_START: "speaking",
+    PipelineEventType.ERROR: "error",
+}
+
+
+async def async_setup_entry(
+    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+) -> None:
+    if entry.data[CONF_MODE] != MODE_VOICE:
+        return
+    device = hass.data[DOMAIN]["devices"][entry.data[CONF_DEVICE_ID]]
+    async_add_entities([PhoneAssistSatellite(device)])
+
+
+class PhoneAssistSatellite(PhoneEntity, AssistSatelliteEntity):
+    """Streams the phone's microphone into an Assist pipeline and plays the reply.
+
+    The phone decides when to start: either on a button press (pipeline starts at the
+    speech-to-text stage) or continuously (pipeline starts at the wake word stage, so
+    the wake word engine configured in the Assist pipeline does the detecting).
+    """
+
+    entity_description = AssistSatelliteEntityDescription(key="assist_satellite")
+    _attr_name = "Assistant"
+    _attr_icon = "mdi:microphone-message"
+    _attr_supported_features = AssistSatelliteEntityFeature.ANNOUNCE
+
+    def __init__(self, device: PhoneDevice) -> None:
+        super().__init__(device, "assistant")
+        self._queue: asyncio.Queue[bytes | None] | None = None
+        self._run_task: asyncio.Task | None = None
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.device.voice_listener = self._on_voice_message
+        self.device.audio_sink = self._on_audio
+
+    async def async_will_remove_from_hass(self) -> None:
+        self.device.voice_listener = None
+        self.device.audio_sink = None
+        self._end_stream()
+        await super().async_will_remove_from_hass()
+
+    # --- phone -> Home Assistant -------------------------------------------------
+
+    @callback
+    def _on_voice_message(self, data: dict[str, Any]) -> None:
+        if data.get("type") == "voice_start":
+            stage = PipelineStage.WAKE_WORD if data.get("stage") == "wake_word" else PipelineStage.STT
+            self._start_run(stage)
+        else:  # voice_stop
+            self._end_stream()
+
+    @callback
+    def _on_audio(self, chunk: bytes) -> None:
+        if self._queue is None:
+            return
+        try:
+            self._queue.put_nowait(chunk)
+        except asyncio.QueueFull:
+            pass  # the pipeline fell behind: drop audio rather than grow without bound
+
+    @callback
+    def _start_run(self, start_stage: PipelineStage) -> None:
+        self._end_stream()
+        queue: asyncio.Queue[bytes | None] = asyncio.Queue(maxsize=VOICE_QUEUE_CHUNKS)
+        self._queue = queue
+        self._run_task = self.device.entry.async_create_background_task(
+            self.hass, self._run(queue, start_stage), "phone_speaker_voice"
+        )
+
+    @callback
+    def _end_stream(self) -> None:
+        """Stop feeding the running pipeline; it finishes on its own."""
+        queue, self._queue = self._queue, None
+        if queue is not None:
+            try:
+                queue.put_nowait(None)
+            except asyncio.QueueFull:
+                if self._run_task is not None:
+                    self._run_task.cancel()
+
+    async def _run(self, queue: asyncio.Queue[bytes | None], start_stage: PipelineStage) -> None:
+        async def stream() -> AsyncIterator[bytes]:
+            while (chunk := await queue.get()) is not None:
+                yield chunk
+
+        try:
+            await self.async_accept_pipeline_from_satellite(stream(), start_stage=start_stage)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            _LOGGER.exception("Assist pipeline failed for %s", self.device.name)
+            self.device.send_soon(
+                {"type": "voice_event", "event": "error", "message": "pipeline failed"}
+            )
+        finally:
+            if self._queue is queue:
+                self._queue = None
+            self.device.send_soon({"type": "voice_end"})
+
+    # --- Home Assistant -> phone -------------------------------------------------
+
+    @callback
+    def on_pipeline_event(self, event: PipelineEvent) -> None:
+        if event.type == PipelineEventType.TTS_END:
+            tts_output = (event.data or {}).get("tts_output")
+            if tts_output:
+                url = async_process_play_media_url(self.hass, tts_output["url"])
+                self.device.entry.async_create_background_task(
+                    self.hass, self._play_reply(url), "phone_speaker_tts"
+                )
+            return
+
+        name = _EVENTS.get(event.type)
+        if name is None:
+            return
+        payload: dict[str, Any] = {"type": "voice_event", "event": name}
+        data = event.data or {}
+        if event.type == PipelineEventType.STT_END:
+            payload["text"] = data.get("stt_output", {}).get("text", "")
+        elif event.type == PipelineEventType.ERROR:
+            payload["message"] = data.get("message", "")
+            payload["code"] = data.get("code", "")
+        self.device.send_soon(payload)
+
+    async def _play_reply(self, url: str) -> None:
+        try:
+            await self.device.async_play_and_wait(url, announce=True)
+        finally:
+            self.tts_response_finished()
+
+    async def async_announce(self, announcement: AssistSatelliteAnnouncement) -> None:
+        """Play an announcement, blocking until it has finished."""
+        if announcement.preannounce_media_id:
+            await self.device.async_play_and_wait(
+                async_process_play_media_url(self.hass, announcement.preannounce_media_id),
+                announce=True,
+            )
+        await self.device.async_play_and_wait(
+            async_process_play_media_url(self.hass, announcement.media_id), announce=True
+        )
+
+    @callback
+    def async_get_configuration(self) -> AssistSatelliteConfiguration:
+        # Wake words are detected by the engine in the Assist pipeline, not on the phone.
+        return AssistSatelliteConfiguration(
+            available_wake_words=[], active_wake_words=[], max_active_wake_words=1
+        )
+
+    async def async_set_configuration(self, config: AssistSatelliteConfiguration) -> None:
+        """Nothing to configure on the phone."""

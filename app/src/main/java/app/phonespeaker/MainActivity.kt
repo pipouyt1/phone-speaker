@@ -8,6 +8,8 @@ import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.RadioButton
+import android.widget.RadioGroup
 import android.widget.Switch
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -20,15 +22,19 @@ class MainActivity : AppCompatActivity() {
     private lateinit var address: EditText
     private lateinit var code: EditText
     private lateinit var pairButton: Button
-    private lateinit var smartSwitch: Switch
+    private lateinit var modes: RadioGroup
+    private lateinit var listenSwitch: Switch
+    private lateinit var talkButton: Button
     private lateinit var toggle: Button
     private lateinit var unpair: Button
     private lateinit var status: TextView
 
+    private val modeButtons = LinkedHashMap<String, RadioButton>()
+
     private val refresher = object : Runnable {
         override fun run() {
             refresh()
-            status.postDelayed(this, 2000)
+            status.postDelayed(this, 1500)
         }
     }
 
@@ -36,7 +42,11 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         cfg = Config(this)
         requestPermissions(
-            arrayOf(Manifest.permission.POST_NOTIFICATIONS, Manifest.permission.BLUETOOTH_CONNECT), 1
+            arrayOf(
+                Manifest.permission.POST_NOTIFICATIONS,
+                Manifest.permission.BLUETOOTH_CONNECT,
+                Manifest.permission.RECORD_AUDIO,
+            ), 1
         )
 
         val pad = (16 * resources.displayMetrics.density).toInt()
@@ -58,17 +68,45 @@ class MainActivity : AppCompatActivity() {
             text = "Emparejar"
             setOnClickListener { onPair() }
         }
-        smartSwitch = Switch(this).apply {
-            text = "Modo inteligente (selector de salida y batería)"
-            isChecked = cfg.smart
-            setOnCheckedChangeListener { _, checked ->
-                cfg.smart = checked
-                // the mode is sent when connecting: reconnect so Home Assistant updates its entities
-                if (SpeakerService.running) {
-                    stopService(Intent(this@MainActivity, SpeakerService::class.java))
-                    startSpeaker()
-                }
+
+        modes = RadioGroup(this)
+        listOf(
+            Config.MODE_GENERIC to "Simple: solo parlante",
+            Config.MODE_SMART to "Inteligente: + salida de audio y batería",
+            Config.MODE_VOICE to "Asistente de voz (como Alexa)",
+        ).forEach { (mode, label) ->
+            val button = RadioButton(this).apply {
+                text = label
+                id = View.generateViewId()
             }
+            modeButtons[mode] = button
+            modes.addView(button)
+        }
+        // Button ids are generated per creation, so restoring saved state after a rotation
+        // would check the wrong one and silently change the mode.
+        modes.isSaveEnabled = false
+        modeButtons.values.forEach { it.isSaveEnabled = false }
+        modes.check(modeButtons.getValue(cfg.mode).id)
+        modes.setOnCheckedChangeListener { _, checkedId ->
+            val chosen = modeButtons.entries.firstOrNull { it.value.id == checkedId }?.key ?: return@setOnCheckedChangeListener
+            if (chosen == cfg.mode) return@setOnCheckedChangeListener
+            cfg.mode = chosen
+            // the mode is sent when connecting: reconnect so Home Assistant updates its entities
+            if (SpeakerService.running) restartSpeaker()
+            refresh()
+        }
+
+        listenSwitch = Switch(this).apply {
+            text = "Escucha continua (palabra de activación en Home Assistant)"
+            isChecked = cfg.listen
+            setOnCheckedChangeListener { _, checked ->
+                cfg.listen = checked
+                SpeakerService.instance?.applyListening()
+            }
+        }
+        talkButton = Button(this).apply {
+            text = "Hablar"
+            setOnClickListener { SpeakerService.instance?.talk() }
         }
         toggle = Button(this).apply { setOnClickListener { onToggle() } }
         unpair = Button(this).apply {
@@ -76,13 +114,15 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener {
                 stopService(Intent(this@MainActivity, SpeakerService::class.java))
                 cfg.unpair()
+                status.text = ""
                 refresh()
             }
         }
         status = TextView(this).apply { setPadding(0, pad, 0, 0) }
 
-        listOf(address, code, pairButton, smartSwitch, toggle, unpair, status).forEach(root::addView)
-        setContentView(root)
+        listOf(address, code, pairButton, modes, listenSwitch, talkButton, toggle, unpair, status)
+            .forEach(root::addView)
+        setContentView(android.widget.ScrollView(this).apply { addView(root) })
     }
 
     override fun onResume() {
@@ -93,6 +133,13 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         status.removeCallbacks(refresher)
         super.onPause()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        // the microphone service type can only be declared once the permission exists
+        if (cfg.voice && SpeakerService.running && SpeakerService.hasMicPermission(this)) restartSpeaker()
     }
 
     private fun onPair() {
@@ -123,6 +170,11 @@ class MainActivity : AppCompatActivity() {
         status.postDelayed({ refresh() }, 500)
     }
 
+    private fun restartSpeaker() {
+        stopService(Intent(this, SpeakerService::class.java))
+        startSpeaker()
+    }
+
     private fun onToggle() {
         if (SpeakerService.running) {
             stopService(Intent(this, SpeakerService::class.java))
@@ -136,12 +188,15 @@ class MainActivity : AppCompatActivity() {
         val paired = cfg.paired
         val pairing = if (paired) View.GONE else View.VISIBLE
         val operating = if (paired) View.VISIBLE else View.GONE
+        val voice = if (paired && cfg.voice) View.VISIBLE else View.GONE
         address.visibility = pairing
         code.visibility = pairing
         pairButton.visibility = pairing
-        smartSwitch.visibility = operating
+        modes.visibility = operating
         toggle.visibility = operating
         unpair.visibility = operating
+        listenSwitch.visibility = voice
+        talkButton.visibility = voice
 
         if (!paired) {
             if (status.text.isNullOrEmpty() || status.text == "Detenido.") {
@@ -152,10 +207,12 @@ class MainActivity : AppCompatActivity() {
         }
         toggle.text = if (SpeakerService.running) "Detener" else "Iniciar"
         val c = SpeakerService.client
-        status.text = when {
+        val connection = when {
             !SpeakerService.running -> "Detenido."
             c?.connected == true -> "Conectado a ${cfg.baseUrl}."
             else -> "Conectando a ${cfg.baseUrl}...\n${c?.lastError.orEmpty()}"
         }
+        val voiceLine = if (cfg.voice && SpeakerService.running) "\n${SpeakerService.voiceStatus}" else ""
+        status.text = connection + voiceLine
     }
 }

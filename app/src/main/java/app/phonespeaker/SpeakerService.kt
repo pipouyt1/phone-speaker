@@ -1,10 +1,12 @@
 package app.phonespeaker
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.media.AudioManager
 import android.net.wifi.WifiManager
@@ -12,24 +14,37 @@ import android.os.BatteryManager
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
 import org.json.JSONArray
 import org.json.JSONObject
 
 /**
  * Foreground service: holds the connection to Home Assistant, plays what it is told
- * to play and reports state back.
+ * to play, reports state back and, in voice mode, streams the microphone to Assist.
  */
 class SpeakerService : Service(), HaClient.Listener {
     companion object {
+        private const val TAG = "PhoneSpeaker"
         private const val CHANNEL = "speaker"
         private const val STATE_INTERVAL_MS = 60_000L
+        private const val ANNOUNCE_TIMEOUT_MS = 120_000L
+        private const val MAX_VOICE_ERRORS = 3
 
         @Volatile var running = false
             private set
         @Volatile var client: HaClient? = null
             private set
+        @Volatile var instance: SpeakerService? = null
+            private set
+        @Volatile var voiceStatus: String = ""
+            private set
+
+        fun hasMicPermission(ctx: android.content.Context) =
+            ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
     }
 
     private lateinit var cfg: Config
@@ -44,6 +59,19 @@ class SpeakerService : Service(), HaClient.Listener {
         }
     }
 
+    // voice
+    private var micAllowed = false
+    private var capture: VoiceCapture? = null
+    @Volatile private var streaming = false
+    @Volatile private var announcePlaying = false
+    private var sawAnnounceStart = false
+    private var voiceErrors = 0
+    private var lastVoiceStart = 0L
+    private val restartListening = Runnable {
+        if (cfg.listen && !streaming && !announcePlaying && voiceEnabled()) startVoice("wake_word")
+    }
+    private val announceTimeout = Runnable { clearAnnounce() }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -52,17 +80,34 @@ class SpeakerService : Service(), HaClient.Listener {
             stopSelf()
             return START_NOT_STICKY
         }
-        ServiceCompat.startForeground(
-            this, 1, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-        )
+        startInForeground()
         if (!running) start()
         return START_STICKY
+    }
+
+    private fun startInForeground() {
+        val playback = ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+        if (cfg.voice && hasMicPermission(this)) {
+            try {
+                ServiceCompat.startForeground(
+                    this, 1, notification(), playback or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                )
+                micAllowed = true
+                return
+            } catch (e: Exception) {
+                // Android refuses microphone services started while the app is in the background
+                Log.w(TAG, "microphone foreground service not allowed: $e")
+            }
+        }
+        micAllowed = false
+        ServiceCompat.startForeground(this, 1, notification(), playback)
     }
 
     private fun start() {
         player = PlayerController(this) { pushState() }
         val c = HaClient(cfg, this)
         client = c
+        instance = this
         @Suppress("DEPRECATION")
         wifiLock = applicationContext.getSystemService(WifiManager::class.java)
             .createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "phone-speaker")
@@ -74,7 +119,10 @@ class SpeakerService : Service(), HaClient.Listener {
 
     override fun onDestroy() {
         running = false
+        instance = null
+        voiceStatus = ""
         main.removeCallbacksAndMessages(null)
+        capture?.stop()
         client?.stop()
         client = null
         wifiLock?.takeIf { it.isHeld }?.release()
@@ -82,20 +130,37 @@ class SpeakerService : Service(), HaClient.Listener {
         super.onDestroy()
     }
 
-    override fun onConnected() = pushState()
+    // ---- connection ------------------------------------------------------------
 
-    override fun onDisconnected() {}
+    override fun onConnected() {
+        pushState()
+        main.post { if (cfg.voice && cfg.listen) maybeListen() }
+    }
+
+    override fun onDisconnected() {
+        main.post {
+            streaming = false
+            capture?.stop()
+        }
+    }
+
+    // ---- commands from Home Assistant ------------------------------------------
 
     override fun onCommand(msg: JSONObject) {
         val p = player ?: return
         when (msg.optString("type")) {
-            "play" -> msg.optString("url").takeIf { it.isNotEmpty() }?.let { p.play(it) }
+            "play" -> msg.optString("url").takeIf { it.isNotEmpty() }?.let {
+                main.post { if (msg.optBoolean("announce")) beginAnnounce() }
+                p.play(it)
+            }
             "resume" -> p.resume()
             "pause" -> p.pause()
-            "stop" -> p.stop()
+            "stop" -> { main.post { clearAnnounce() }; p.stop() }
             "volume" -> p.setVolume(msg.optDouble("level", p.volume.toDouble()).toFloat())
             "mute" -> p.setMuted(msg.optBoolean("muted"))
             "output" -> selectOutput(msg.optString("name"))
+            "voice_end" -> main.post { streaming = false; maybeListen() }
+            "voice_event" -> main.post { handleVoiceEvent(msg) }
         }
     }
 
@@ -108,9 +173,133 @@ class SpeakerService : Service(), HaClient.Listener {
         pushState()
     }
 
+    // ---- voice -----------------------------------------------------------------
+
+    private fun voiceEnabled() = cfg.voice && micAllowed && client?.connected == true
+
+    /** Push to talk: start a conversation right now (Home Assistant detects the end of speech). */
+    fun talk() {
+        main.post {
+            if (!voiceEnabled()) {
+                voiceStatus = when {
+                    !cfg.voice -> "Activa el modo asistente de voz."
+                    !micAllowed -> "Falta el permiso del micrófono. Dalo y reinicia."
+                    else -> "Sin conexión con Home Assistant."
+                }
+                return@post
+            }
+            startVoice("stt")
+        }
+    }
+
+    /** The "continuous listening" switch changed. */
+    fun applyListening() {
+        main.post {
+            main.removeCallbacks(restartListening)
+            if (cfg.listen) {
+                voiceErrors = 0
+                maybeListen()
+            } else {
+                if (streaming) stopVoice() else capture?.stop()
+                voiceStatus = ""
+            }
+        }
+    }
+
+    private fun startVoice(stage: String) {
+        if (!voiceEnabled()) return
+        if (streaming) client?.send(JSONObject().put("type", "voice_stop"))
+        if (capture?.active != true) {
+            capture = VoiceCapture(::onMicChunk, ::onMicError).also { it.start() }
+        }
+        streaming = true
+        lastVoiceStart = SystemClock.elapsedRealtime()
+        voiceStatus = if (stage == "wake_word") "Esperando la palabra de activación..." else "Escuchando..."
+        client?.send(JSONObject().put("type", "voice_start").put("stage", stage))
+    }
+
+    private fun stopVoice() {
+        streaming = false
+        client?.send(JSONObject().put("type", "voice_stop"))
+        if (!cfg.listen) capture?.stop()
+    }
+
+    private fun maybeListen() {
+        if (!voiceEnabled()) return
+        main.removeCallbacks(restartListening)
+        if (cfg.listen && !streaming && !announcePlaying) {
+            // back off when Home Assistant keeps ending the run right away, instead of looping
+            val shortRun = SystemClock.elapsedRealtime() - lastVoiceStart < 1_500L
+            val delay = when {
+                voiceErrors > 0 -> 5_000L
+                shortRun -> 3_000L
+                else -> 300L
+            }
+            main.postDelayed(restartListening, delay)
+        } else if (!cfg.listen && !streaming) {
+            capture?.stop()
+        }
+    }
+
+    private fun onMicChunk(buffer: ByteArray, length: Int) {
+        // Mute the upload while a reply is playing so the assistant does not hear itself.
+        if (streaming && !announcePlaying) client?.sendAudio(buffer, length)
+    }
+
+    private fun onMicError(message: String) {
+        main.post {
+            streaming = false
+            voiceStatus = message
+        }
+    }
+
+    private fun handleVoiceEvent(msg: JSONObject) {
+        when (msg.optString("event")) {
+            "wake_word" -> { voiceErrors = 0; voiceStatus = "Te escuché..." }
+            "listening" -> { voiceErrors = 0; voiceStatus = "Escuchando..." }
+            "heard" -> voiceStatus = "Escuché: \"${msg.optString("text")}\""
+            "thinking" -> voiceStatus = "Pensando..."
+            "speaking" -> voiceStatus = "Respondiendo..."
+            "error" -> {
+                voiceErrors++
+                val detail = msg.optString("message").ifEmpty { msg.optString("code") }
+                voiceStatus = "Error de voz: $detail"
+                if (voiceErrors >= MAX_VOICE_ERRORS && cfg.listen) {
+                    cfg.listen = false
+                    capture?.stop()
+                    voiceStatus = "Escucha continua desactivada tras varios errores. ¿Falta un motor " +
+                        "de palabra de activación (openWakeWord) en el pipeline de Assist?"
+                }
+            }
+        }
+    }
+
+    private fun beginAnnounce() {
+        announcePlaying = true
+        sawAnnounceStart = false
+        main.removeCallbacks(announceTimeout)
+        main.postDelayed(announceTimeout, ANNOUNCE_TIMEOUT_MS)
+    }
+
+    private fun clearAnnounce() {
+        main.removeCallbacks(announceTimeout)
+        if (announcePlaying) {
+            announcePlaying = false
+            sawAnnounceStart = false
+            if (!cfg.listen) voiceStatus = ""
+            maybeListen()
+        }
+    }
+
+    // ---- state -----------------------------------------------------------------
+
     private fun pushState() {
         val c = client ?: return
         val p = player ?: return
+        if (announcePlaying) {
+            if (p.state == PlayerController.PLAYING) sawAnnounceStart = true
+            else if (sawAnnounceStart) main.post { clearAnnounce() }
+        }
         val playerState = JSONObject()
             .put("state", when (p.state) {
                 PlayerController.PLAYING -> "playing"

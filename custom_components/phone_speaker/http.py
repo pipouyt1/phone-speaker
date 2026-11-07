@@ -145,6 +145,9 @@ class WsView(HomeAssistantView):
             await ws.send_json({"type": "hello_ok"})
 
             async for msg in ws:
+                if msg.type == WSMsgType.BINARY:
+                    device.handle_audio(msg.data)
+                    continue
                 if msg.type != WSMsgType.TEXT:
                     continue
                 try:

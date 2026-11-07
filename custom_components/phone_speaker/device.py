@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 import logging
 from typing import Any
@@ -13,7 +14,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
 
-from .const import CONF_DEVICE_ID, CONF_MODE, CONF_TOKEN, DOMAIN
+from .const import CONF_DEVICE_ID, CONF_MODE, CONF_TOKEN, DOMAIN, PLAYBACK_TIMEOUT
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -42,6 +43,13 @@ class PhoneDevice:
             "output": None,
         }
         self._listeners: set[Callable[[], None]] = set()
+
+        # Voice: set by the Assist satellite entity when it exists.
+        self.voice_listener: Callable[[dict[str, Any]], None] | None = None
+        self.audio_sink: Callable[[bytes], None] | None = None
+
+        self._playback_done: asyncio.Event | None = None
+        self._saw_playing = False
 
     @property
     def connected(self) -> bool:
@@ -86,16 +94,36 @@ class PhoneDevice:
     def detach(self, ws: web.WebSocketResponse) -> None:
         if self.ws is ws:
             self.ws = None
+            if self._playback_done is not None:
+                self._playback_done.set()
             _LOGGER.info("Phone %s disconnected", self.name)
             self._notify()
 
     @callback
     def handle_message(self, data: dict[str, Any]) -> None:
-        if data.get("type") != "state":
-            return
+        kind = data.get("type")
+        if kind == "state":
+            self._handle_state(data)
+        elif kind in ("voice_start", "voice_stop") and self.voice_listener is not None:
+            self.voice_listener(data)
+
+    @callback
+    def handle_audio(self, chunk: bytes) -> None:
+        """Microphone audio from the phone (16 kHz, mono, 16-bit PCM)."""
+        if self.audio_sink is not None:
+            self.audio_sink(chunk)
+
+    @callback
+    def _handle_state(self, data: dict[str, Any]) -> None:
         for key in ("player", "battery", "outputs", "output"):
             if key in data:
                 self.state[key] = data[key]
+        player = self.state.get("player")
+        current = player.get("state") if isinstance(player, dict) else None
+        if current == "playing":
+            self._saw_playing = True
+        elif self._saw_playing and self._playback_done is not None:
+            self._playback_done.set()
         self._notify()
 
     async def async_send(self, payload: dict[str, Any]) -> None:
@@ -103,6 +131,32 @@ class PhoneDevice:
             raise HomeAssistantError(f"{self.name} is not connected")
         assert self.ws is not None
         await self.ws.send_json(payload)
+
+    @callback
+    def send_soon(self, payload: dict[str, Any]) -> None:
+        """Fire and forget, for use from synchronous callbacks."""
+
+        async def _send() -> None:
+            try:
+                await self.async_send(payload)
+            except (HomeAssistantError, ConnectionError):
+                pass
+
+        self.entry.async_create_background_task(self.hass, _send(), "phone_speaker_send")
+
+    async def async_play_and_wait(self, url: str, *, announce: bool = False) -> None:
+        """Play a URL and return once the phone reports that playback ended."""
+        done = asyncio.Event()
+        self._playback_done = done
+        self._saw_playing = False
+        await self.async_send({"type": "play", "url": url, "announce": announce})
+        try:
+            await asyncio.wait_for(done.wait(), PLAYBACK_TIMEOUT)
+        except TimeoutError:
+            _LOGGER.debug("Timed out waiting for %s to finish playing", self.name)
+        finally:
+            if self._playback_done is done:
+                self._playback_done = None
 
     async def async_close(self) -> None:
         if self.ws is not None and not self.ws.closed:
