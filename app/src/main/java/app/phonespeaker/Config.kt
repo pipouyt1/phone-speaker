@@ -40,10 +40,13 @@ class Config(private val ctx: Context) {
      */
     val listen: Boolean get() = voice
 
-    /** Short beep when the assistant starts listening (wake word heard or Talk pressed). */
-    var chime: Boolean
-        get() = prefs.getBoolean("chime", true)
-        set(v) = prefs.edit().putBoolean("chime", v).apply()
+    /**
+     * Volume of the short beep when the assistant starts listening (wake word heard or Talk
+     * pressed), 0-100. 0 turns it off.
+     */
+    var chimeVolume: Int
+        get() = prefs.getInt("chime_volume", 80)
+        set(v) = prefs.edit().putInt("chime_volume", v.coerceIn(0, 100)).apply()
 
     val smart: Boolean get() = mode != MODE_GENERIC
     val voice: Boolean get() = mode == MODE_VOICE

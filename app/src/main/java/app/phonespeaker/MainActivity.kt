@@ -10,7 +10,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
-import android.widget.Switch
+import android.widget.SeekBar
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -24,7 +24,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var pairButton: Button
     private lateinit var modes: RadioGroup
     private lateinit var talkButton: Button
-    private lateinit var chimeSwitch: Switch
+    private lateinit var chimeLabel: TextView
+    private lateinit var chimeSlider: SeekBar
     private lateinit var toggle: Button
     private lateinit var unpair: Button
     private lateinit var status: TextView
@@ -96,11 +97,20 @@ class MainActivity : AppCompatActivity() {
             refresh()
         }
 
-        chimeSwitch = Switch(this).apply {
-            text = "Sonido (\"pim\") cuando te escucha"
-            isChecked = cfg.chime
-            setOnCheckedChangeListener { _, checked -> cfg.chime = checked }
+        chimeLabel = TextView(this).apply { setPadding(0, pad, 0, 0) }
+        chimeSlider = SeekBar(this).apply {
+            max = 100
+            progress = cfg.chimeVolume
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(bar: SeekBar, value: Int, fromUser: Boolean) {
+                    chimeLabel.text = chimeText(value)
+                    if (fromUser) cfg.chimeVolume = value
+                }
+                override fun onStartTrackingTouch(bar: SeekBar) {}
+                override fun onStopTrackingTouch(bar: SeekBar) = Chime.play(bar.progress) // preview
+            })
         }
+        chimeLabel.text = chimeText(cfg.chimeVolume)
         talkButton = Button(this).apply {
             text = "Hablar"
             setOnClickListener { SpeakerService.instance?.talk() }
@@ -117,7 +127,7 @@ class MainActivity : AppCompatActivity() {
         }
         status = TextView(this).apply { setPadding(0, pad, 0, 0) }
 
-        listOf(address, code, pairButton, modes, chimeSwitch, talkButton, toggle, unpair, status)
+        listOf(address, code, pairButton, modes, chimeLabel, chimeSlider, talkButton, toggle, unpair, status)
             .forEach(root::addView)
         setContentView(android.widget.ScrollView(this).apply { addView(root) })
     }
@@ -138,6 +148,9 @@ class MainActivity : AppCompatActivity() {
         // the microphone service type can only be declared once the permission exists
         if (cfg.voice && SpeakerService.running && SpeakerService.hasMicPermission(this)) restartSpeaker()
     }
+
+    private fun chimeText(volume: Int) =
+        if (volume == 0) "Volumen del pitido: apagado" else "Volumen del pitido: $volume%"
 
     private fun onPair() {
         val url = HaClient.normalizeUrl(address.text.toString())
@@ -193,7 +206,8 @@ class MainActivity : AppCompatActivity() {
         toggle.visibility = operating
         unpair.visibility = operating
         talkButton.visibility = voice
-        chimeSwitch.visibility = voice
+        chimeLabel.visibility = voice
+        chimeSlider.visibility = voice
 
         if (!paired) {
             if (status.text.isNullOrEmpty() || status.text == "Detenido.") {

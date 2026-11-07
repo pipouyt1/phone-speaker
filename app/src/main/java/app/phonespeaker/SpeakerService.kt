@@ -9,7 +9,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.media.AudioManager
-import android.media.ToneGenerator
 import android.net.wifi.WifiManager
 import android.os.BatteryManager
 import android.os.Handler
@@ -70,7 +69,6 @@ class SpeakerService : Service(), HaClient.Listener {
     private var sawAnnounceStart = false
     private var voiceErrors = 0
     private var runId = 0
-    private var tone: ToneGenerator? = null
     @Volatile private var micMuteUntil = 0L
     private var lastVoiceStart = 0L
     private val restartListening = Runnable {
@@ -133,8 +131,6 @@ class SpeakerService : Service(), HaClient.Listener {
         voiceStatus = ""
         main.removeCallbacksAndMessages(null)
         capture?.stop()
-        tone?.release()
-        tone = null
         client?.stop()
         client = null
         wifiLock?.takeIf { it.isHeld }?.release()
@@ -275,14 +271,9 @@ class SpeakerService : Service(), HaClient.Listener {
 
     /** The "pim": confirms the assistant is listening. The microphone is muted briefly so it is not heard. */
     private fun chime() {
-        if (!cfg.chime) return
+        if (cfg.chimeVolume <= 0) return
         micMuteUntil = SystemClock.elapsedRealtime() + 250
-        try {
-            val generator = tone ?: ToneGenerator(AudioManager.STREAM_MUSIC, 80).also { tone = it }
-            generator.startTone(ToneGenerator.TONE_PROP_BEEP, 120)
-        } catch (e: RuntimeException) {
-            Log.w(TAG, "could not play the chime: $e")
-        }
+        Chime.play(cfg.chimeVolume)
     }
 
     private fun onMicError(message: String) {
