@@ -21,6 +21,7 @@ from .const import (
     MODES,
     PAIR_FAIL_LIMIT,
     PAIR_URL,
+    WAITING_TTL,
     WS_URL,
 )
 
@@ -93,6 +94,13 @@ class PairView(HomeAssistantView):
             return self.json_message("Invalid or expired code", 403)
 
         token = secrets.token_urlsafe(32)
+        # The phone connects right away, before the user has pressed Submit in Home Assistant.
+        # Keep that connection in a waiting room so the device is online the moment it exists
+        # (Home Assistant only offers the voice assistant setup for an available satellite).
+        waiting: dict[str, dict[str, Any]] = data.setdefault("waiting", {})
+        for stale_token in [t for t, w in waiting.items() if w["expires"] < now]:
+            waiting.pop(stale_token)
+        waiting[token] = {"expires": now + WAITING_TTL, "ws": None, "hello": None}
         match["result"] = {
             "device_id": device_id,
             "name": name,
@@ -114,6 +122,7 @@ class WsView(HomeAssistantView):
         ws = web.WebSocketResponse(heartbeat=30)
         await ws.prepare(request)
 
+        token: Any = None
         device = None
         try:
             msg = await ws.receive(timeout=10)
@@ -124,27 +133,38 @@ class WsView(HomeAssistantView):
                 await ws.close(code=4400, message=b"bad hello")
                 return ws
 
-            device = _find_device(hass, hello.get("token"))
-            if device is None:
-                await asyncio.sleep(1)  # slow down token guessing
-                await ws.close(code=4401, message=b"unauthorized")
-                return ws
-
-            mode = hello.get("mode")
-            if mode in MODES and mode != device.entry.data.get(CONF_MODE):
-                # Entity set depends on the mode: update the entry, which reloads it,
-                # and let the phone reconnect into the new device object.
-                hass.config_entries.async_update_entry(
-                    device.entry, data={**device.entry.data, CONF_MODE: mode}
-                )
-                await ws.close(code=4000, message=b"mode changed")
-                device = None
-                return ws
-
-            await device.async_attach(ws, hello)
+            token = hello.get("token")
+            device = _find_device(hass, token)
+            if device is not None:
+                mode = hello.get("mode")
+                if mode in MODES and mode != device.entry.data.get(CONF_MODE):
+                    # Entity set depends on the mode: update the entry, which reloads it,
+                    # and let the phone reconnect into the new device object.
+                    hass.config_entries.async_update_entry(
+                        device.entry, data={**device.entry.data, CONF_MODE: mode}
+                    )
+                    await ws.close(code=4000, message=b"mode changed")
+                    device = None
+                    return ws
+                await device.async_attach(ws, hello)
+            else:
+                slot = _waiting_slot(hass, token)
+                if slot is None:
+                    await asyncio.sleep(1)  # slow down token guessing
+                    await ws.close(code=4401, message=b"unauthorized")
+                    return ws
+                # Paired, but the device does not exist yet (the user has not pressed Submit):
+                # keep the connection; async_setup_entry adopts it as soon as the device exists.
+                slot["ws"], slot["hello"] = ws, hello
             await ws.send_json({"type": "hello_ok"})
 
             async for msg in ws:
+                if device is None:
+                    device = _find_device(hass, token)  # created while this phone was waiting
+                    if device is not None and device.ws is not ws:
+                        await device.async_attach(ws, hello)
+                if device is None:
+                    continue  # still waiting: nothing to do with its data yet
                 if msg.type == WSMsgType.BINARY:
                     device.handle_audio(msg.data)
                     continue
@@ -159,9 +179,23 @@ class WsView(HomeAssistantView):
         except (TimeoutError, ValueError):
             pass
         finally:
+            slot = _waiting_slot(hass, token)
+            if slot is not None and slot["ws"] is ws:
+                slot["ws"] = None
+            device = device or _find_device(hass, token)
             if device is not None:
                 device.detach(ws)
         return ws
+
+
+def _waiting_slot(hass: HomeAssistant, token: Any) -> dict[str, Any] | None:
+    """The waiting-room slot of a phone that has paired but whose device is not created yet."""
+    if not isinstance(token, str):
+        return None
+    slot = hass.data[DOMAIN].get("waiting", {}).get(token)
+    if slot is None or slot["expires"] < time.monotonic():
+        return None
+    return slot
 
 
 def _find_device(hass: HomeAssistant, token: Any):

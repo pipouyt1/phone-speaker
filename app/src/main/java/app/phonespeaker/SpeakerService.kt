@@ -174,6 +174,12 @@ class SpeakerService : Service(), HaClient.Listener {
             "volume" -> p.setVolume(msg.optDouble("level", p.volume.toDouble()).toFloat())
             "mute" -> p.setMuted(msg.optBoolean("muted"))
             "output" -> selectOutput(msg.optString("name"))
+            "attached" -> main.post {
+                // Home Assistant just created our device: it ignored everything sent until now
+                streaming = false
+                pushState()
+                maybeListen()
+            }
             "voice_end" -> {
                 val run = msg.optInt("run", -1)
                 main.post {

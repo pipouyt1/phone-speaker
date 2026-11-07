@@ -15,6 +15,7 @@ PAIR_URL = "/api/phone_speaker/pair"
 WS_URL = "/api/phone_speaker/ws"
 
 PAIR_CODE_TTL = 600  # seconds a pairing code stays valid
+WAITING_TTL = 1800  # seconds a paired phone may wait, connected, for its device to be created
 PAIR_FAIL_LIMIT = 10  # wrong codes tolerated per minute before answering 429
 
 VOICE_QUEUE_CHUNKS = 200  # ~20 s of 100 ms audio chunks buffered per voice run

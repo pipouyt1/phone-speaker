@@ -36,7 +36,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await async_ensure_http(hass)
     device = PhoneDevice(hass, entry)
     hass.data[DOMAIN]["devices"][device.device_id] = device
+    # A phone that has just paired is already connected, waiting for this device to exist:
+    # adopt that connection before the entities are created, so the Assist satellite is available
+    # right away (Home Assistant only offers its voice assistant setup for an available satellite).
+    slot = hass.data[DOMAIN].get("waiting", {}).pop(device.token, None)
+    adopted = slot is not None and slot["ws"] is not None and not slot["ws"].closed
+    if adopted:
+        await device.async_attach(slot["ws"], slot["hello"] or {})
     await hass.config_entries.async_forward_entry_setups(entry, _platforms(entry))
+    if adopted:
+        # whatever the phone sent while it was waiting was dropped: tell it to send its state
+        # and, in voice mode, start listening again now that the entities exist
+        device.send_soon({"type": "attached"})
     entry.async_on_unload(entry.add_update_listener(_async_reload))
     return True
 
