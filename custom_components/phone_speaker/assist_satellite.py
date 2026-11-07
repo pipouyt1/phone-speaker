@@ -64,6 +64,9 @@ class PhoneAssistSatellite(PhoneEntity, AssistSatelliteEntity):
     for example openWakeWord, before handing the rest of the audio to the pipeline).
     """
 
+    _unrecorded_attributes = frozenset(
+        {"audio_chunks", "audio_level", "wake_word_engine", "wake_word", "last_wake_word"}
+    )
     entity_description = AssistSatelliteEntityDescription(key="assist_satellite")
     _attr_name = "Assistant"
     _attr_icon = "mdi:microphone-message"
@@ -76,6 +79,10 @@ class PhoneAssistSatellite(PhoneEntity, AssistSatelliteEntity):
         self._store = Store[dict[str, Any]](device.hass, 1, f"{DOMAIN}_{device.device_id}")
         self._active_wake_word: str | None = None
         self._available_wake_words: list[wake_word.WakeWord] = []
+        self._audio_chunks = 0
+        self._audio_level = 0.0
+        self._last_state_write = 0.0
+        self._last_wake_word: str | None = None
 
     # --- Assist pipeline / VAD selects live next to this entity ------------------
 
@@ -176,12 +183,33 @@ class PhoneAssistSatellite(PhoneEntity, AssistSatelliteEntity):
     @callback
     def _on_voice_message(self, data: dict[str, Any]) -> None:
         if data.get("type") == "voice_start":
-            self._start_run(wake_word_stage=data.get("stage") == "wake_word")
+            self._start_run(wake_word_stage=data.get("stage") == "wake_word", run=data.get("run"))
         else:  # voice_stop
             self._end_stream()
 
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """What Home Assistant is receiving from the phone, to debug wake word problems."""
+        choice = self._wake_word_choice
+        return {
+            "audio_chunks": self._audio_chunks,
+            "audio_level": round(self._audio_level, 1),
+            "wake_word_engine": wake_word.async_default_entity(self.hass),
+            "wake_word": choice.id if choice else None,
+            "last_wake_word": self._last_wake_word,
+        }
+
     @callback
     def _on_audio(self, chunk: bytes) -> None:
+        self._audio_chunks += 1
+        samples = memoryview(chunk[: len(chunk) // 2 * 2]).cast("h")
+        if len(samples):
+            rms = (sum(s * s for s in samples) / len(samples)) ** 0.5
+            self._audio_level = rms / 327.68  # percent of full scale
+        now = time.monotonic()
+        if self.entity_id and now - self._last_state_write > 10:
+            self._last_state_write = now
+            self.async_write_ha_state()
         if self._queue is None:
             return
         try:
@@ -190,12 +218,12 @@ class PhoneAssistSatellite(PhoneEntity, AssistSatelliteEntity):
             pass  # the pipeline fell behind: drop audio rather than grow without bound
 
     @callback
-    def _start_run(self, *, wake_word_stage: bool) -> None:
+    def _start_run(self, *, wake_word_stage: bool, run: int | None) -> None:
         self._end_stream()
         queue: asyncio.Queue[bytes | None] = asyncio.Queue(maxsize=VOICE_QUEUE_CHUNKS)
         self._queue = queue
         self._run_task = self.device.entry.async_create_background_task(
-            self.hass, self._run(queue, wake_word_stage), "phone_speaker_voice"
+            self.hass, self._run(queue, wake_word_stage, run), "phone_speaker_voice"
         )
 
     @callback
@@ -209,7 +237,9 @@ class PhoneAssistSatellite(PhoneEntity, AssistSatelliteEntity):
                 if self._run_task is not None:
                     self._run_task.cancel()
 
-    async def _run(self, queue: asyncio.Queue[bytes | None], wake_word_stage: bool) -> None:
+    async def _run(
+        self, queue: asyncio.Queue[bytes | None], wake_word_stage: bool, run: int | None
+    ) -> None:
         async def stream() -> AsyncIterator[bytes]:
             while (chunk := await queue.get()) is not None:
                 yield chunk
@@ -233,6 +263,7 @@ class PhoneAssistSatellite(PhoneEntity, AssistSatelliteEntity):
                     # Setup wizard: "say the wake word" step, no conversation wanted.
                     waiting.set_result(phrase)
                     return
+                self._last_wake_word = phrase
                 self.device.send_soon({"type": "voice_event", "event": "wake_word"})
             await self.async_accept_pipeline_from_satellite(
                 audio, start_stage=PipelineStage.STT, wake_word_phrase=phrase
@@ -247,7 +278,7 @@ class PhoneAssistSatellite(PhoneEntity, AssistSatelliteEntity):
         finally:
             if self._queue is queue:
                 self._queue = None
-            self.device.send_soon({"type": "voice_end"})
+            self.device.send_soon({"type": "voice_end", "run": run})
 
     # --- Home Assistant -> phone -------------------------------------------------
 

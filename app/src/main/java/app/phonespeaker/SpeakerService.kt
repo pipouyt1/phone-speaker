@@ -41,6 +41,9 @@ class SpeakerService : Service(), HaClient.Listener {
             private set
         @Volatile var voiceStatus: String = ""
             private set
+        /** Microphone loudness, 0-100, for checking that the microphone really hears something. */
+        @Volatile var micLevel: Int = 0
+            private set
 
         fun hasMicPermission(ctx: android.content.Context) =
             ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
@@ -65,6 +68,7 @@ class SpeakerService : Service(), HaClient.Listener {
     @Volatile private var announcePlaying = false
     private var sawAnnounceStart = false
     private var voiceErrors = 0
+    private var runId = 0
     private var lastVoiceStart = 0L
     private val restartListening = Runnable {
         if (cfg.listen && !streaming && !announcePlaying && voiceEnabled()) startVoice("wake_word")
@@ -162,7 +166,16 @@ class SpeakerService : Service(), HaClient.Listener {
             "volume" -> p.setVolume(msg.optDouble("level", p.volume.toDouble()).toFloat())
             "mute" -> p.setMuted(msg.optBoolean("muted"))
             "output" -> selectOutput(msg.optString("name"))
-            "voice_end" -> main.post { streaming = false; maybeListen() }
+            "voice_end" -> {
+                val run = msg.optInt("run", -1)
+                main.post {
+                    // a late "end" for a run we already replaced would cut off the new one
+                    if (run == -1 || run == runId) {
+                        streaming = false
+                        maybeListen()
+                    }
+                }
+            }
             "voice_event" -> main.post { handleVoiceEvent(msg) }
         }
     }
@@ -202,9 +215,10 @@ class SpeakerService : Service(), HaClient.Listener {
             capture = VoiceCapture(::onMicChunk, ::onMicError).also { it.start() }
         }
         streaming = true
+        runId++
         lastVoiceStart = SystemClock.elapsedRealtime()
         voiceStatus = if (stage == "wake_word") "Esperando la palabra de activación..." else "Escuchando..."
-        client?.send(JSONObject().put("type", "voice_start").put("stage", stage))
+        client?.send(JSONObject().put("type", "voice_start").put("stage", stage).put("run", runId))
     }
 
     private fun stopVoice() {
@@ -231,8 +245,24 @@ class SpeakerService : Service(), HaClient.Listener {
     }
 
     private fun onMicChunk(buffer: ByteArray, length: Int) {
+        micLevel = loudness(buffer, length)
         // Mute the upload while a reply is playing so the assistant does not hear itself.
         if (streaming && !announcePlaying) client?.sendAudio(buffer, length)
+    }
+
+    private fun loudness(buffer: ByteArray, length: Int): Int {
+        var sum = 0.0
+        var samples = 0
+        var i = 0
+        while (i + 1 < length) {
+            val sample = (buffer[i].toInt() and 0xFF) or (buffer[i + 1].toInt() shl 8)
+            sum += sample.toDouble() * sample
+            samples++
+            i += 2
+        }
+        if (samples == 0) return 0
+        // speech is a few percent of full scale: stretch it so the number is readable
+        return (Math.sqrt(sum / samples) / 32768.0 * 400).toInt().coerceIn(0, 100)
     }
 
     private fun onMicError(message: String) {

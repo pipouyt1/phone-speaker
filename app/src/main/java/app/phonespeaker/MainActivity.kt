@@ -201,7 +201,9 @@ class MainActivity : AppCompatActivity() {
             c?.connected == true -> "Conectado a ${cfg.baseUrl}."
             else -> "Conectando a ${cfg.baseUrl}...\n${c?.lastError.orEmpty()}"
         }
-        val voiceLine = if (cfg.voice && SpeakerService.running) "\n${SpeakerService.voiceStatus}" else ""
+        val voiceLine = if (cfg.voice && SpeakerService.running) {
+            "\n${SpeakerService.voiceStatus}\nNivel del micrófono: ${SpeakerService.micLevel}"
+        } else ""
         status.text = connection + voiceLine
     }
 }
