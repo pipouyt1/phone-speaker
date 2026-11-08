@@ -297,6 +297,19 @@ class PhoneAssistSatellite(PhoneEntity, AssistSatelliteEntity):
                 )
             return
 
+        if event.type == PipelineEventType.INTENT_END:
+            # the assistant's answer as text, for the phone to show while it speaks
+            speech = (
+                ((event.data or {}).get("intent_output") or {})
+                .get("response", {})
+                .get("speech", {})
+                .get("plain", {})
+                .get("speech")
+            )
+            if speech:
+                self.device.send_soon({"type": "voice_event", "event": "reply", "text": str(speech)})
+            return
+
         name = _EVENTS.get(event.type)
         if name is None:
             return

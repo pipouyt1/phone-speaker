@@ -63,6 +63,16 @@ class Config(private val ctx: Context) {
         get() = prefs.getBoolean("launcher", false)
         set(v) = prefs.edit().putBoolean("launcher", v).apply()
 
+    /** Room mode: a Home Assistant dashboard fills the screen, and the assistant floats over it. */
+    var room: Boolean
+        get() = prefs.getBoolean("room", false)
+        set(v) = prefs.edit().putBoolean("room", v).apply()
+
+    /** The dashboard to show in room mode: a path such as /lovelace/0, or a full address. */
+    var roomUrl: String
+        get() = prefs.getString("room_url", "") ?: ""
+        set(v) = prefs.edit().putString("room_url", v.trim()).apply()
+
     val smart: Boolean get() = mode != MODE_GENERIC
     val voice: Boolean get() = mode == MODE_VOICE
 

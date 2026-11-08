@@ -51,6 +51,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -74,11 +75,16 @@ private enum class Tab(val label: String, val icon: ImageVector) {
 
 @Composable
 fun PhoneSpeakerApp(state: UiState, actions: AppActions) {
+    var showSettings by rememberSaveable { mutableStateOf(false) }
+    val roomConfigured = state.room && state.roomUrl.isNotBlank()
+    val roomShowing = state.paired && roomConfigured && !showSettings
+    LaunchedEffect(roomShowing) { actions.setRoomShowing(roomShowing) }
+
     Box(Modifier.fillMaxSize()) {
-        if (state.paired) {
-            MainTabs(state, actions)
-        } else {
-            CenteredContent { OnboardingScreen(state, actions) }
+        when {
+            roomShowing -> RoomScreen(state, onSettings = { showSettings = true })
+            state.paired -> MainTabs(state, actions, onOpenRoom = if (roomConfigured) ({ showSettings = false }) else null)
+            else -> CenteredContent { OnboardingScreen(state, actions) }
         }
         // content sent from Home Assistant covers everything until it is closed
         state.display?.let { DisplayOverlay(it, actions::dismissDisplay) }
@@ -94,7 +100,7 @@ private fun CenteredContent(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun MainTabs(state: UiState, actions: AppActions) {
+private fun MainTabs(state: UiState, actions: AppActions, onOpenRoom: (() -> Unit)?) {
     var tab by rememberSaveable { mutableStateOf(Tab.Home) }
     Scaffold(
         bottomBar = {
@@ -112,8 +118,8 @@ private fun MainTabs(state: UiState, actions: AppActions) {
     ) { padding ->
         Box(Modifier.padding(padding).fillMaxSize()) {
             when (tab) {
-                Tab.Home -> HomeScreen(state, actions)
-                Tab.Sound -> CenteredContent { SoundScreen(state, actions) }
+                Tab.Home -> HomeScreen(state, actions, onOpenRoom)
+                Tab.Sound -> CenteredContent { SoundScreen(state, actions, onOpenRoom) }
                 Tab.Connection -> CenteredContent { ConnectionScreen(state, actions) }
             }
         }
@@ -123,7 +129,7 @@ private fun MainTabs(state: UiState, actions: AppActions) {
 // ---- home --------------------------------------------------------------------------------
 
 @Composable
-private fun HomeScreen(state: UiState, actions: AppActions) {
+private fun HomeScreen(state: UiState, actions: AppActions, onOpenRoom: (() -> Unit)?) {
     var showApps by rememberSaveable { mutableStateOf(false) }
     val voice = state.mode == Config.MODE_VOICE
     val connecting = state.running && !state.connected
@@ -173,6 +179,13 @@ private fun HomeScreen(state: UiState, actions: AppActions) {
                 when {
                     !state.running -> BigButton("Iniciar", height = buttonHeight) { actions.toggleService() }
                     voice -> BigButton("Hablar ahora", enabled = state.connected, height = buttonHeight) { actions.talk() }
+                }
+                if (onOpenRoom != null) {
+                    FilledTonalButton(
+                        onClick = onOpenRoom,
+                        shapes = ButtonDefaults.shapes(),
+                        modifier = Modifier.fillMaxWidth().height(if (wide) 64.dp else 56.dp),
+                    ) { Text("Volver al tablero", style = MaterialTheme.typography.titleMedium) }
                 }
                 if (state.launcher) {
                     FilledTonalButton(
@@ -255,7 +268,7 @@ private fun BigButton(text: String, enabled: Boolean = true, height: Dp = 64.dp,
 // ---- sound -------------------------------------------------------------------------------
 
 @Composable
-private fun SoundScreen(state: UiState, actions: AppActions) {
+private fun SoundScreen(state: UiState, actions: AppActions, onOpenRoom: (() -> Unit)?) {
     var chime by rememberSaveable(state.chimeVolume) { mutableStateOf(state.chimeVolume.toFloat()) }
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding().padding(24.dp),
@@ -308,6 +321,36 @@ private fun SoundScreen(state: UiState, actions: AppActions) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+        }
+
+        SectionCard("Modo de Habitación") {
+            Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SwitchRow(
+                    "Tablero de Home Assistant a pantalla completa",
+                    "Muestra tu tablero como pantalla principal. El asistente aparece flotando arriba cuando dices la palabra de activación.",
+                    state.room, actions::setRoom,
+                )
+                if (state.room) {
+                    var url by rememberSaveable { mutableStateOf(state.roomUrl) }
+                    OutlinedTextField(
+                        value = url,
+                        onValueChange = { url = it; actions.setRoomUrl(it) },
+                        label = { Text("Dirección del tablero") },
+                        placeholder = { Text("/lovelace/0") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text(
+                        "Puedes poner solo la ruta (por ejemplo /lovelace/0) o una dirección completa. La primera vez tendrás que iniciar sesión en Home Assistant dentro de este dispositivo.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (onOpenRoom != null) {
+                        FilledTonalButton(onClick = onOpenRoom, shapes = ButtonDefaults.shapes()) { Text("Abrir el tablero") }
+                    }
+                }
             }
         }
 

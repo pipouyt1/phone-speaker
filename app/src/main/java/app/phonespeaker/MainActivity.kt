@@ -62,13 +62,13 @@ class MainActivity : ComponentActivity(), AppActions {
     override fun onStart() {
         super.onStart()
         SpeakerService.uiVisible = true
-        applyFullscreen(cfg.fullscreen)
+        updateWindow()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         // the system brings the bars back after some interactions: hide them again
-        if (hasFocus) applyFullscreen(cfg.fullscreen)
+        if (hasFocus) updateWindow()
     }
 
     private fun applyFullscreen(on: Boolean) {
@@ -86,11 +86,21 @@ class MainActivity : ComponentActivity(), AppActions {
         super.onStop()
     }
 
+    private var displayActive = false
+    private var roomShowing = false
+
     private fun applyDisplayWindow(active: Boolean) {
+        displayActive = active
         setShowWhenLocked(active)
         setTurnScreenOn(active)
-        if (active) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        updateWindow()
+    }
+
+    /** Fullscreen and keep-screen-on follow the settings, the room dashboard and shown content. */
+    private fun updateWindow() {
+        if (displayActive || roomShowing) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        applyFullscreen(cfg.fullscreen || roomShowing)
     }
 
     private fun snapshot(): UiState {
@@ -116,6 +126,9 @@ class MainActivity : ComponentActivity(), AppActions {
             overlayGranted = Settings.canDrawOverlays(this),
             fullscreen = cfg.fullscreen,
             launcher = cfg.launcher,
+            room = cfg.room,
+            roomUrl = cfg.roomUrl,
+            reply = SpeakerService.lastReply,
         )
     }
 
@@ -200,8 +213,22 @@ class MainActivity : ComponentActivity(), AppActions {
 
     override fun setFullscreen(enabled: Boolean) {
         cfg.fullscreen = enabled
-        applyFullscreen(enabled)
+        updateWindow()
         tick++
+    }
+
+    override fun setRoom(enabled: Boolean) {
+        cfg.room = enabled
+        tick++
+    }
+
+    override fun setRoomUrl(url: String) {
+        cfg.roomUrl = url
+    }
+
+    override fun setRoomShowing(showing: Boolean) {
+        roomShowing = showing
+        updateWindow()
     }
 
     override fun setLauncher(enabled: Boolean) {

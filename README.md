@@ -96,6 +96,24 @@ contenido y se cierra, no es un panel interactivo permanente.
   inicio** abre el selector de Android para elegir esta app como launcher predeterminado (la app
   siempre se ofrece como opción de pantalla de inicio, pero solo lo es si la eliges).
 
+## Modo de Habitación
+
+Para una tableta fija en una pieza: un **tablero de Home Assistant a pantalla completa** y, al decir
+la palabra de activación, el asistente **aparece flotando arriba** sobre el tablero.
+
+- Se activa en **Sonido > Modo de Habitación**, con la dirección del tablero: solo la ruta (por
+  ejemplo `/lovelace/0`) o una dirección completa. La primera vez hay que iniciar sesión en Home
+  Assistant dentro del dispositivo (marca "Mantener la sesión iniciada"); la sesión queda guardada.
+- Con el modo activo, la app abre directo el tablero, oculta las barras del sistema y mantiene la
+  pantalla encendida. Un engranaje pequeño en la esquina lleva a los ajustes, donde **Volver al
+  tablero** regresa. El botón atrás navega dentro del tablero.
+- El asistente flotante (modo de voz): **Te escucho** con las barras del micrófono, lo que
+  entendió, y la respuesta escrita mientras habla; el tablero se atenúa detrás y la tarjeta se va
+  unos segundos después de responder.
+- Si Home Assistant se reinicia o se corta la red, el tablero se recarga solo cada 15 s.
+- Con este modo conviene dejar la tableta enchufada. Para ocultar la barra lateral y el encabezado
+  de Home Assistant, usa un tablero sin ellos (por ejemplo con el complemento Kiosk Mode de HACS).
+
 ## Instalar la integración en HA
 
 **Con HACS (recomendado):** HACS > menú de tres puntos > *Repositorios personalizados* >

@@ -57,6 +57,10 @@ class SpeakerService : Service(), HaClient.Listener {
 
         fun dismissDisplay() { screenItem = null }
 
+        /** The assistant's last answer, as text (shown while it speaks). */
+        @Volatile var lastReply: String = ""
+            private set
+
         /** The last thing Assist understood, as text. */
         @Volatile var lastHeard: String = ""
             private set
@@ -287,6 +291,7 @@ class SpeakerService : Service(), HaClient.Listener {
                 return@post
             }
             chime()
+            lastReply = ""
             startVoice("stt")
         }
     }
@@ -367,7 +372,8 @@ class SpeakerService : Service(), HaClient.Listener {
 
     private fun handleVoiceEvent(msg: JSONObject) {
         when (msg.optString("event")) {
-            "wake_word" -> { voiceErrors = 0; voiceStatus = "Te escuché..."; voicePhase = "listening"; chime() }
+            "wake_word" -> { voiceErrors = 0; lastReply = ""; voiceStatus = "Te escuché..."; voicePhase = "listening"; chime() }
+            "reply" -> lastReply = msg.optString("text")
             "listening" -> { voiceErrors = 0; voiceStatus = "Escuchando..."; voicePhase = "listening" }
             "heard" -> {
                 voiceStatus = "Escuché: \"${msg.optString("text")}\""
