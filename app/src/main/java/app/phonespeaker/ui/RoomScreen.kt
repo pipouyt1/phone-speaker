@@ -142,16 +142,23 @@ private fun BoxScope.AssistantFloat(state: UiState) {
         enter = slideInVertically { -it * 2 } + fadeIn(),
         exit = slideOutVertically { -it * 2 } + fadeOut(),
     ) {
-        FloatCard(state, shown)
+        AssistantCard(shown, state.lastHeard, state.reply, state.micLevel)
     }
 }
 
+/** The assistant card: listening with microphone bars, what it understood, its answer. Used over the dashboard and over other apps. */
 @Composable
-private fun FloatCard(state: UiState, phase: String) {
+fun AssistantCard(
+    phase: String,
+    heard: String,
+    reply: String,
+    micLevel: Int,
+    modifier: Modifier = Modifier.widthIn(max = 600.dp).fillMaxWidth(0.82f),
+) {
     val (title, subtitle) = when (phase) {
         "listening" -> "Te escucho" to "Di tu pedido"
-        "thinking" -> (if (state.lastHeard.isNotEmpty()) "“${state.lastHeard}”" else "Entendiendo") to "Un momento..."
-        "speaking" -> (state.reply.ifEmpty { "Respondiendo..." }) to ""
+        "thinking" -> (if (heard.isNotEmpty()) "“$heard”" else "Entendiendo") to "Un momento..."
+        "speaking" -> (reply.ifEmpty { "Respondiendo..." }) to ""
         else -> "Algo falló" to "Vuelve a intentarlo"
     }
     Surface(
@@ -159,21 +166,21 @@ private fun FloatCard(state: UiState, phase: String) {
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         tonalElevation = 6.dp,
         shadowElevation = 8.dp,
-        modifier = Modifier.widthIn(max = 600.dp).fillMaxWidth(0.82f),
+        modifier = modifier,
     ) {
         Row(
             Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            VoiceOrb(phase = phase, micLevel = if (phase == "listening") state.micLevel else 0, size = 52.dp)
+            VoiceOrb(phase = phase, micLevel = if (phase == "listening") micLevel else 0, size = 52.dp)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 if (subtitle.isNotEmpty()) {
                     Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            if (phase == "listening") LevelBars(state.micLevel)
+            if (phase == "listening") LevelBars(micLevel)
         }
     }
 }

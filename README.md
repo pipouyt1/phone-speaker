@@ -114,6 +114,22 @@ la palabra de activación, el asistente **aparece flotando arriba** sobre el tab
 - Con este modo conviene dejar la tableta enchufada. Para ocultar la barra lateral y el encabezado
   de Home Assistant, usa un tablero sin ellos (por ejemplo con el complemento Kiosk Mode de HACS).
 
+## Abrir apps con la voz y asistente sobre otras apps
+
+- **"Abre (nombre de la app)":** en modo de voz, di por ejemplo "Abre calculadora" o "Abre
+  Spotify" y el dispositivo abre esa app. Entiende "abre", "abrir", "inicia", "lanza" y "open", con
+  o sin "la", "mi" o "app". Solo actúa si el nombre coincide con una app instalada; frases como
+  "abre la persiana" las sigue resolviendo Home Assistant. Como Home Assistant no conoce esas apps y
+  contestaría "no entendí", el dispositivo no reproduce esa respuesta y muestra "Abriendo ..." en
+  la tarjeta.
+- **Asistente flotante sobre otras apps** (Sonido > Pantalla): al oír la palabra de activación, la
+  tarjeta del asistente aparece arriba de lo que tengas en pantalla (Te escucho con las barras del
+  micrófono, lo que entendió y su respuesta) y se va unos segundos después de responder. Los
+  toques la atraviesan. Si la pantalla estaba apagada, la enciende.
+- Ambas necesitan el permiso de Android **Mostrar sobre otras apps** (la app tiene un botón que
+  lo pide). Sin él, "Abre ..." solo funciona con la app a la vista y, en segundo plano, llega una
+  notificación para abrirla.
+
 ## Instalar la integración en HA
 
 **Con HACS (recomendado):** HACS > menú de tres puntos > *Repositorios personalizados* >

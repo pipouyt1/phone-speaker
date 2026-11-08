@@ -23,6 +23,7 @@ data class UiState(
     val overlayGranted: Boolean,
     val fullscreen: Boolean,
     val launcher: Boolean,
+    val floating: Boolean,
     val room: Boolean,
     val roomUrl: String,
     val reply: String,
@@ -44,6 +45,7 @@ interface AppActions {
     fun requestOverlayPermission()
     fun setFullscreen(enabled: Boolean)
     fun setLauncher(enabled: Boolean)
+    fun setFloating(enabled: Boolean)
     fun setRoom(enabled: Boolean)
     fun setRoomUrl(url: String)
     /** The room dashboard is on screen: hide the system bars and keep the screen on. */

@@ -73,6 +73,11 @@ class Config(private val ctx: Context) {
         get() = prefs.getString("room_url", "") ?: ""
         set(v) = prefs.edit().putString("room_url", v.trim()).apply()
 
+    /** Show the assistant over other apps when the wake word is heard (needs "display over other apps"). */
+    var floating: Boolean
+        get() = prefs.getBoolean("floating", true)
+        set(v) = prefs.edit().putBoolean("floating", v).apply()
+
     val smart: Boolean get() = mode != MODE_GENERIC
     val voice: Boolean get() = mode == MODE_VOICE
 

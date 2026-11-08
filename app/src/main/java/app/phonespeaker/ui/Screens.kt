@@ -361,9 +361,16 @@ private fun SoundScreen(state: UiState, actions: AppActions, onOpenRoom: (() -> 
                     "Imágenes, videos, páginas web y mensajes que mandes a este dispositivo.",
                     state.displayEnabled, actions::setDisplayEnabled,
                 )
-                if (state.displayEnabled && !state.overlayGranted) {
+                if (state.mode == Config.MODE_VOICE) {
+                    SwitchRow(
+                        "Asistente flotante sobre otras apps",
+                        "Aparece arriba cuando dices la palabra de activación, estés en la app que estés, y permite decir \"Abre (nombre de una app)\".",
+                        state.floating, actions::setFloating,
+                    )
+                }
+                if ((state.displayEnabled || state.floating) && !state.overlayGranted) {
                     Text(
-                        "Para que el contenido se abra solo cuando la app está cerrada, permite \"Mostrar sobre otras apps\".",
+                        "Para que el contenido y el asistente se muestren sobre otras apps, y para abrir apps con la voz, permite \"Mostrar sobre otras apps\".",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

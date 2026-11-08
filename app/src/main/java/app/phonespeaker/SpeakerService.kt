@@ -15,6 +15,7 @@ import android.os.BatteryManager
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
@@ -89,6 +90,15 @@ class SpeakerService : Service(), HaClient.Listener {
     private var sawAnnounceStart = false
     private var voiceErrors = 0
     private var runId = 0
+    private var suppressReplyUntil = 0L
+    private var overlay: AssistantOverlay? = null
+    private var overlayWantedAt = 0L
+    private val overlayTick = object : Runnable {
+        override fun run() {
+            updateOverlay()
+            main.postDelayed(this, 250L)
+        }
+    }
     @Volatile private var micMuteUntil = 0L
     private var lastVoiceStart = 0L
     private val restartListening = Runnable {
@@ -142,6 +152,7 @@ class SpeakerService : Service(), HaClient.Listener {
             .apply { setReferenceCounted(false); acquire() }
         c.start()
         main.postDelayed(ticker, STATE_INTERVAL_MS)
+        main.post(overlayTick)
         running = true
     }
 
@@ -152,6 +163,8 @@ class SpeakerService : Service(), HaClient.Listener {
         voicePhase = "idle"
         screenItem = null
         main.removeCallbacksAndMessages(null)
+        overlay?.hide()
+        overlay = null
         capture?.stop()
         client?.stop()
         client = null
@@ -180,9 +193,18 @@ class SpeakerService : Service(), HaClient.Listener {
         Log.i(TAG, "command ${msg.optString("type")}")
         val p = player ?: return
         when (msg.optString("type")) {
-            "play" -> msg.optString("url").takeIf { it.isNotEmpty() }?.let {
-                main.post { if (msg.optBoolean("announce")) beginAnnounce() }
-                p.play(HaClient.resolveMediaUrl(cfg.baseUrl, it))
+            "play" -> {
+                if (msg.optBoolean("announce") && SystemClock.elapsedRealtime() < suppressReplyUntil) {
+                    // the sentence was "abre <app>": Home Assistant does not know that app and its answer
+                    // ("no entendí") would be wrong, so do not play it
+                    suppressReplyUntil = 0L
+                    client?.send(JSONObject().put("type", "play_skipped"))
+                } else {
+                    msg.optString("url").takeIf { it.isNotEmpty() }?.let {
+                        main.post { if (msg.optBoolean("announce")) beginAnnounce() }
+                        p.play(HaClient.resolveMediaUrl(cfg.baseUrl, it))
+                    }
+                }
             }
             "resume" -> p.resume()
             "pause" -> p.pause()
@@ -219,6 +241,57 @@ class SpeakerService : Service(), HaClient.Listener {
     fun currentOutput(): String = selectedOutput
 
     fun chooseOutput(name: String) = selectOutput(name)
+
+    // ---- opening apps and the floating assistant ------------------------------------------
+
+    /** "Abre Spotify": open the app and show it on the assistant card instead of Home Assistant's reply. */
+    private fun openApp(app: AppLauncher.Entry) {
+        suppressReplyUntil = SystemClock.elapsedRealtime() + 20_000L
+        lastReply = "Abriendo ${app.label}"
+        voicePhase = "speaking"
+        val intent = AppLauncher.launchIntent(this, app) ?: return
+        if (uiVisible || Settings.canDrawOverlays(this)) {
+            startActivity(intent)
+            return
+        }
+        // Android does not let an app in the background open another one without that permission
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.createNotificationChannel(NotificationChannel("display", "Contenido en pantalla", NotificationManager.IMPORTANCE_HIGH))
+        nm.notify(
+            3,
+            NotificationCompat.Builder(this, "display")
+                .setSmallIcon(android.R.drawable.stat_sys_headset)
+                .setContentTitle("Abrir ${app.label}")
+                .setContentText("Toca para abrirla")
+                .setContentIntent(PendingIntent.getActivity(this, 1, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
+                .setAutoCancel(true)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .build(),
+        )
+    }
+
+    /** Light the screen when the wake word is heard, so the floating assistant can be seen. */
+    @Suppress("DEPRECATION")
+    private fun wakeScreen() {
+        val power = getSystemService(PowerManager::class.java)
+        if (power.isInteractive) return
+        power.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP, "phonespeaker:wake")
+            .acquire(8_000L)
+    }
+
+    /** Show the assistant over other apps while someone talks to it, and a few seconds after it answers. */
+    private fun updateOverlay() {
+        val active = voicePhase == "listening" || voicePhase == "thinking" || voicePhase == "speaking" || voicePhase == "error"
+        val wanted = cfg.floating && cfg.voice && !uiVisible && Settings.canDrawOverlays(this) && active
+        val now = SystemClock.elapsedRealtime()
+        val window = overlay ?: AssistantOverlay(this).also { overlay = it }
+        if (wanted) {
+            overlayWantedAt = now
+            if (!window.showing) window.show()
+        } else if (window.showing && (uiVisible || now - overlayWantedAt > 4_500L)) {
+            window.hide()
+        }
+    }
 
     // ---- screen --------------------------------------------------------------------------
 
@@ -372,13 +445,19 @@ class SpeakerService : Service(), HaClient.Listener {
 
     private fun handleVoiceEvent(msg: JSONObject) {
         when (msg.optString("event")) {
-            "wake_word" -> { voiceErrors = 0; lastReply = ""; voiceStatus = "Te escuché..."; voicePhase = "listening"; chime() }
-            "reply" -> lastReply = msg.optString("text")
+            "wake_word" -> {
+                voiceErrors = 0; lastReply = ""; suppressReplyUntil = 0L
+                voiceStatus = "Te escuché..."; voicePhase = "listening"
+                if (cfg.floating && !uiVisible) wakeScreen()
+                chime()
+            }
+            "reply" -> if (SystemClock.elapsedRealtime() >= suppressReplyUntil) lastReply = msg.optString("text")
             "listening" -> { voiceErrors = 0; voiceStatus = "Escuchando..."; voicePhase = "listening" }
             "heard" -> {
                 voiceStatus = "Escuché: \"${msg.optString("text")}\""
                 lastHeard = msg.optString("text")
                 voicePhase = "thinking"
+                AppLauncher.find(this, lastHeard)?.let { openApp(it) }
             }
             "thinking" -> { voiceStatus = "Pensando..."; voicePhase = "thinking" }
             "speaking" -> { voiceStatus = "Respondiendo..."; voicePhase = "speaking" }

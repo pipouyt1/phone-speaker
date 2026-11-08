@@ -113,6 +113,11 @@ class PhoneDevice:
         kind = data.get("type")
         if kind == "state":
             self._handle_state(data)
+        elif kind == "play_skipped":
+            # the phone chose not to play it (for example, the command was handled on the phone):
+            # nothing to wait for
+            if self._playback_done is not None:
+                self._playback_done.set()
         elif kind == "play_error":
             self._play_failed = True
             if self._playback_done is not None:

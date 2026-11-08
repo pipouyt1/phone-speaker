@@ -126,6 +126,7 @@ class MainActivity : ComponentActivity(), AppActions {
             overlayGranted = Settings.canDrawOverlays(this),
             fullscreen = cfg.fullscreen,
             launcher = cfg.launcher,
+            floating = cfg.floating,
             room = cfg.room,
             roomUrl = cfg.roomUrl,
             reply = SpeakerService.lastReply,
@@ -214,6 +215,11 @@ class MainActivity : ComponentActivity(), AppActions {
     override fun setFullscreen(enabled: Boolean) {
         cfg.fullscreen = enabled
         updateWindow()
+        tick++
+    }
+
+    override fun setFloating(enabled: Boolean) {
+        cfg.floating = enabled
         tick++
     }
 
