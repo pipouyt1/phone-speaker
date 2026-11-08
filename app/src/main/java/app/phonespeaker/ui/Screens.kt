@@ -324,6 +324,41 @@ private fun SoundScreen(state: UiState, actions: AppActions, onOpenRoom: (() -> 
             }
         }
 
+        if (state.mode == Config.MODE_VOICE) {
+            SectionCard("Asistente del teléfono") {
+                Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Puedes usar este dispositivo como el asistente del teléfono: mantén pulsado el botón de inicio o usa el gesto del asistente y aparecerá la píldora flotante para hablar con Home Assistant.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        if (state.assistantDefault) "Phone Speaker es el asistente predeterminado."
+                        else "Phone Speaker no es el asistente predeterminado.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    FilledTonalButton(onClick = actions::openAssistantSettings, shapes = ButtonDefaults.shapes()) {
+                        Text(if (state.assistantDefault) "Cambiar asistente del teléfono" else "Usar como asistente del teléfono")
+                    }
+                    Text(
+                        "En Ajustes, elige Phone Speaker en \"Asistente digital\" o \"Aplicación de asistencia\".",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (!state.overlayGranted) {
+                        Text(
+                            "Para que la píldora aparezca sobre otras apps, permite \"Mostrar sobre otras apps\".",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        FilledTonalButton(onClick = actions::requestOverlayPermission, shapes = ButtonDefaults.shapes()) {
+                            Text("Dar permiso")
+                        }
+                    }
+                }
+            }
+        }
+
         SectionCard("Modo de Habitación") {
             Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 SwitchRow(

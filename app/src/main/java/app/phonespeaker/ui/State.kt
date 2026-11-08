@@ -24,6 +24,7 @@ data class UiState(
     val fullscreen: Boolean,
     val launcher: Boolean,
     val floating: Boolean,
+    val assistantDefault: Boolean,
     val room: Boolean,
     val roomUrl: String,
     val reply: String,
@@ -46,6 +47,8 @@ interface AppActions {
     fun setFullscreen(enabled: Boolean)
     fun setLauncher(enabled: Boolean)
     fun setFloating(enabled: Boolean)
+    /** Open Android's "digital assistant app" settings so the user can pick Phone Speaker. */
+    fun openAssistantSettings()
     fun setRoom(enabled: Boolean)
     fun setRoomUrl(url: String)
     /** The room dashboard is on screen: hide the system bars and keep the screen on. */

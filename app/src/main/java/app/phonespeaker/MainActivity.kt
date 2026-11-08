@@ -3,6 +3,7 @@ package app.phonespeaker
 import android.Manifest
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.WindowManager
@@ -127,6 +128,7 @@ class MainActivity : ComponentActivity(), AppActions {
             fullscreen = cfg.fullscreen,
             launcher = cfg.launcher,
             floating = cfg.floating,
+            assistantDefault = cfg.defaultAssistant,
             room = cfg.room,
             roomUrl = cfg.roomUrl,
             reply = SpeakerService.lastReply,
@@ -221,6 +223,16 @@ class MainActivity : ComponentActivity(), AppActions {
     override fun setFloating(enabled: Boolean) {
         cfg.floating = enabled
         tick++
+    }
+
+    override fun openAssistantSettings() {
+        val pages = buildList {
+            add(Intent(Settings.ACTION_VOICE_INPUT_SETTINGS))
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) add(Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS))
+        }
+        for (page in pages) {
+            if (runCatching { startActivity(page) }.isSuccess) return
+        }
     }
 
     override fun setRoom(enabled: Boolean) {

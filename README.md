@@ -130,6 +130,24 @@ la palabra de activación, el asistente **aparece flotando arriba** sobre el tab
   lo pide). Sin él, "Abre ..." solo funciona con la app a la vista y, en segundo plano, llega una
   notificación para abrirla.
 
+## Asistente del teléfono (botón de inicio)
+
+La app también se puede elegir como el **asistente digital del teléfono**. En **Sonido >
+Asistente del teléfono** toca **Usar como asistente del teléfono** y elige **Phone Speaker** en
+Ajustes (aparece como *Asistente digital* o *Aplicación de asistencia*).
+
+Después, al mantener pulsado el botón de inicio (o usar el gesto del asistente), empieza una
+conversación con Home Assistant y aparece **la misma píldora flotante** que con la palabra de
+activación, estés en la app que estés. La píldora se muestra aunque tengas desactivado el
+asistente flotante por palabra de activación; necesita el permiso **Mostrar sobre otras apps**.
+Sin ese permiso se abre la app para que veas y oigas la conversación.
+
+- Requiere el modo **Asistente de voz** y el micrófono concedido.
+- El gesto concreto depende del teléfono: pulsación larga de inicio, botón lateral o el gesto de
+  asistente de Android.
+- Si Phone Speaker no aparece en la lista, el fabricante no permite asistentes de terceros; la
+  palabra de activación y el botón **Hablar** siguen funcionando igual.
+
 ## Instalar la integración en HA
 
 **Con HACS (recomendado):** HACS > menú de tres puntos > *Repositorios personalizados* >
@@ -202,6 +220,9 @@ esa serie (la 1.4.0 estable los oculta), así que pueden cambiar de API.
   instanciada contra el código de Home Assistant 2026.11.0.
 - Sin probar dentro de un HA en ejecución: el flujo de configuración y las entidades de voz con un
   pipeline de Assist real. Si algo falla, abre un issue con el log de HA.
+- El asistente del teléfono depende de que Android permita elegir apps de terceros en Ajustes >
+  Asistente digital; algunos fabricantes solo ofrecen el suyo. La píldora necesita "Mostrar sobre
+  otras apps"; sin el permiso se abre la app.
 - Los anuncios (`announce`) no bajan el volumen de lo que ya suena.
 - Usa `MediaPlayer` simple; para más formatos (HLS, etc.) habría que pasar a Media3/ExoPlayer.
 - La palabra de activación no se detecta en el teléfono, sino en HA (consume algo de red y batería).

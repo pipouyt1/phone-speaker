@@ -6,6 +6,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
@@ -66,8 +67,29 @@ class SpeakerService : Service(), HaClient.Listener {
         @Volatile var lastHeard: String = ""
             private set
 
-        fun hasMicPermission(ctx: android.content.Context) =
+        fun hasMicPermission(ctx: Context) =
             ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+
+        @Volatile private var assistantRequested = false
+
+        /**
+         * The phone's digital assistant (long-press Home or the assist gesture) was invoked:
+         * make sure the speaker is running and start a conversation as soon as it can listen.
+         */
+        fun requestAssistant(ctx: Context) {
+            val cfg = Config(ctx)
+            if (!cfg.paired || !cfg.voice || !hasMicPermission(ctx)) return
+            // an explicit invocation starts the speaker even if it was stopped by hand
+            cfg.userStopped = false
+            assistantRequested = true
+            val service = instance
+            when {
+                service == null ->
+                    ContextCompat.startForegroundService(ctx, Intent(ctx, SpeakerService::class.java))
+                !service.micAllowed -> service.retryMicrophone()
+                else -> service.main.post { service.takePendingAssistant() }
+            }
+        }
     }
 
     private lateinit var cfg: Config
@@ -90,6 +112,7 @@ class SpeakerService : Service(), HaClient.Listener {
     private var sawAnnounceStart = false
     private var voiceErrors = 0
     private var runId = 0
+    private var assistantSession = false
     private var suppressReplyUntil = 0L
     private var overlay: AssistantOverlay? = null
     private var overlayWantedAt = 0L
@@ -159,6 +182,7 @@ class SpeakerService : Service(), HaClient.Listener {
     override fun onDestroy() {
         running = false
         instance = null
+        assistantRequested = false
         voiceStatus = ""
         voicePhase = "idle"
         screenItem = null
@@ -177,7 +201,9 @@ class SpeakerService : Service(), HaClient.Listener {
 
     override fun onConnected() {
         pushState()
-        main.post { if (cfg.voice && cfg.listen) maybeListen() }
+        main.post {
+            if (!takePendingAssistant() && cfg.voice && cfg.listen) maybeListen()
+        }
     }
 
     override fun onDisconnected() {
@@ -282,7 +308,10 @@ class SpeakerService : Service(), HaClient.Listener {
     /** Show the assistant over other apps while someone talks to it, and a few seconds after it answers. */
     private fun updateOverlay() {
         val active = voicePhase == "listening" || voicePhase == "thinking" || voicePhase == "speaking" || voicePhase == "error"
-        val wanted = cfg.floating && cfg.voice && !uiVisible && Settings.canDrawOverlays(this) && active
+        // an explicit invocation from the phone's assistant always shows the pill, even when the
+        // wake-word overlay is turned off
+        val wanted = cfg.voice && !uiVisible && Settings.canDrawOverlays(this) && active &&
+            (cfg.floating || assistantSession)
         val now = SystemClock.elapsedRealtime()
         val window = overlay ?: AssistantOverlay(this).also { overlay = it }
         if (wanted) {
@@ -352,6 +381,34 @@ class SpeakerService : Service(), HaClient.Listener {
 
     private fun voiceEnabled() = cfg.voice && micAllowed && client?.connected == true
 
+    /**
+     * Start the conversation requested by the phone's assistant, once the microphone and the
+     * connection are ready. Returns true when there is a request, even if it has to wait.
+     */
+    private fun takePendingAssistant(): Boolean {
+        if (!assistantRequested) return false
+        if (!cfg.voice || !micAllowed || !hasMicPermission(this)) {
+            assistantRequested = false
+            return false
+        }
+        if (client?.connected != true) return true // onConnected will try again
+        assistantRequested = false
+        assistantSession = true
+        chime()
+        lastReply = ""
+        startVoice("stt")
+        return true
+    }
+
+    /**
+     * The service may have been restarted by Android in the background, when the microphone
+     * foreground type was not allowed. The assistant activity is in front now: try again.
+     */
+    private fun retryMicrophone() {
+        startInForeground()
+        if (micAllowed) takePendingAssistant() else assistantRequested = false
+    }
+
     /** Push to talk: start a conversation right now (Home Assistant detects the end of speech). */
     fun talk() {
         main.post {
@@ -371,6 +428,8 @@ class SpeakerService : Service(), HaClient.Listener {
 
     private fun startVoice(stage: String) {
         if (!voiceEnabled()) return
+        // continuous listening goes back to the wake word: the explicit assistant session is over
+        if (stage == "wake_word") assistantSession = false
         if (streaming) client?.send(JSONObject().put("type", "voice_stop"))
         if (capture?.active != true) {
             capture = VoiceCapture(::onMicChunk, ::onMicError).also { it.start() }

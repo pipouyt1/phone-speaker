@@ -1,5 +1,6 @@
 package app.phonespeaker
 
+import android.app.role.RoleManager
 import android.content.Context
 import android.os.Build
 import android.provider.Settings
@@ -87,6 +88,22 @@ class Config(private val ctx: Context) {
         set(v) = prefs.edit().putBoolean("user_stopped", v).apply()
 
     val paired: Boolean get() = baseUrl.isNotEmpty() && token.isNotEmpty()
+
+    /** True when Android uses this app as the device's digital assistant. */
+    val defaultAssistant: Boolean
+        get() {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val roles = ctx.getSystemService(RoleManager::class.java)
+                if (roles != null && roles.isRoleAvailable(RoleManager.ROLE_ASSISTANT) &&
+                    roles.isRoleHeld(RoleManager.ROLE_ASSISTANT)
+                ) return true
+            }
+            // some devices keep the assistant in the secure setting instead of the role
+            val current = runCatching {
+                Settings.Secure.getString(ctx.contentResolver, "assistant")
+            }.getOrNull()
+            return current?.startsWith(ctx.packageName) == true
+        }
 
     val deviceName: String get() = Build.MODEL
 

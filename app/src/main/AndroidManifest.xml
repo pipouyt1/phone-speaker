@@ -42,6 +42,24 @@
             </intent-filter>
         </activity>
 
+        <!--
+            Lets Android offer Phone Speaker as the phone's digital assistant (Settings > Apps >
+            Default apps > Digital assistant app). There is no UI: it starts a conversation and
+            the floating pill appears over whatever is on screen.
+        -->
+        <activity
+            android:name=".AssistActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.PhoneSpeaker.Assist">
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
         <service
             android:name=".SpeakerService"
             android:exported="false"
