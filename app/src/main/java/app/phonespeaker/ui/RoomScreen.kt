@@ -9,8 +9,14 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -161,23 +167,35 @@ fun AssistantCard(
         "speaking" -> (reply.ifEmpty { "Respondiendo..." }) to ""
         else -> "Algo falló" to "Vuelve a intentarlo"
     }
+    // a long message stretches the pill to fit it, with the expressive spring
+    val long = title.length > 44
     Surface(
         shape = RoundedCornerShape(28.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         tonalElevation = 6.dp,
         shadowElevation = 8.dp,
-        modifier = modifier,
+        modifier = modifier.animateContentSize(MaterialTheme.motionScheme.defaultSpatialSpec()),
     ) {
         Row(
             Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalAlignment = if (long) Alignment.Top else Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             VoiceOrb(phase = phase, micLevel = if (phase == "listening") micLevel else 0, size = 52.dp)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                if (subtitle.isNotEmpty()) {
-                    Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // the text cross-fades when it changes; the pill itself does the growing and shrinking
+            AnimatedContent(
+                targetState = title to subtitle,
+                modifier = Modifier.weight(1f),
+                transitionSpec = {
+                    fadeIn(tween(200, delayMillis = 60)) togetherWith fadeOut(tween(120)) using SizeTransform(clip = false) { _, _ -> snap() }
+                },
+                label = "assistant text",
+            ) { (text, hint) ->
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(text, style = MaterialTheme.typography.titleLarge, maxLines = 14, overflow = TextOverflow.Ellipsis)
+                    if (hint.isNotEmpty()) {
+                        Text(hint, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
             if (phase == "listening") LevelBars(micLevel)
