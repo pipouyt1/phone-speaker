@@ -148,6 +148,33 @@ Sin ese permiso se abre la app para que veas y oigas la conversación.
 - Si Phone Speaker no aparece en la lista, el fabricante no permite asistentes de terceros; la
   palabra de activación y el botón **Hablar** siguen funcionando igual.
 
+### Modo asistente
+
+El interruptor **Modo asistente** (en la misma tarjeta) apaga la escucha continua: el micrófono
+solo se enciende cuando invocas al asistente (botón de encendido o gesto) o pulsas **Hablar**, como
+en cualquier teléfono. No hay palabra de activación en este modo.
+
+## Preguntas con botones
+
+El servicio `phone_speaker.ask` hace aparecer la píldora con una pregunta y de 2 a 4 botones, sobre
+cualquier app (o dentro de la app si está abierta). Necesita el permiso **Mostrar sobre otras apps**.
+
+```yaml
+- action: phone_speaker.ask
+  target:
+    entity_id: media_player.mi_telefono
+  data:
+    question: "Alguien está en la puerta. ¿Abro?"
+    camera: camera.puerta        # opcional: imagen en vivo sobre la pregunta
+    # media: /local/foto.jpg     # opcional: imagen o video (URL o fuente multimedia)
+    options: ["Abrir", "Ignorar"]
+    timeout: 60                  # segundos, 0 = hasta que respondas
+  response_variable: r           # r[entidad] = {answered, index, option, reason}
+```
+
+Con `wait: false` la automatización sigue de inmediato; en cualquier caso se lanza el evento
+`phone_speaker_answer` (`entity_id`, `id`, `question`, `answered`, `index`, `option`, `reason`).
+
 ## Instalar la integración en HA
 
 **Con HACS (recomendado):** HACS > menú de tres puntos > *Repositorios personalizados* >
@@ -188,6 +215,12 @@ botón Hablar), **Sonido** (salida de audio, volumen del pitido, modo) y **Conex
 es una pantalla guiada de tres pasos. Al abrir la app el parlante arranca solo, salvo que lo hayas
 detenido tú.
 
+## Actualizar la app
+
+En **Conexión > Actualizaciones** la app busca el último release de GitHub y, si hay una versión
+nueva, la descarga y abre el instalador de Android (la primera vez pide el permiso de instalar apps
+desconocidas).
+
 ## Compilar
 
 Android Studio, o por línea de comandos con JDK 17 y Gradle 8.13:
@@ -211,6 +244,8 @@ esa serie (la 1.4.0 estable los oculta), así que pueden cambiar de API.
   `mute {muted}`, `output {name}`.
 - Voz, teléfono → HA: `voice_start {stage: "stt"|"wake_word"}`, luego **frames binarios** de audio
   PCM de 16 bits, y `voice_stop`.
+- Preguntas: HA → teléfono `prompt {id, question, options, timeout, media?: {kind, url, refresh}}`;
+  teléfono → HA `prompt_answer {id, index, reason}`.
 - Voz, HA → teléfono: `voice_event {event, text?, message?}` y `voice_end` (HA terminó de usar el audio).
 
 ## Estado y límites

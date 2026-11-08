@@ -1,0 +1,36 @@
+ask:
+  target:
+    entity:
+      integration: phone_speaker
+      domain: media_player
+  fields:
+    question:
+      required: true
+      example: "Dejaste la puerta abierta. ¿Qué hago?"
+      selector:
+        text:
+    options:
+      required: true
+      example: '["Cerrar", "Ignorar"]'
+      selector:
+        object:
+    timeout:
+      default: 60
+      selector:
+        number:
+          min: 0
+          max: 3600
+          unit_of_measurement: s
+    camera:
+      selector:
+        entity:
+          filter:
+            domain: camera
+    media:
+      example: "/local/visitante.jpg"
+      selector:
+        text:
+    wait:
+      default: true
+      selector:
+        boolean:

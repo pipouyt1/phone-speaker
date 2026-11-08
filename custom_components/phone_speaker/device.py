@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
 from collections.abc import Callable
 import logging
 from typing import Any
@@ -20,6 +21,7 @@ from .const import (
     CONF_MODE,
     CONF_TOKEN,
     DOMAIN,
+    EVENT_ANSWER,
     PLAYBACK_TIMEOUT,
 )
 
@@ -59,6 +61,8 @@ class PhoneDevice:
         self._playback_done: asyncio.Event | None = None
         self._saw_playing = False
         self._play_failed = False
+        # questions on the phone waiting for an answer: id -> (future, question, options, entity_id)
+        self._prompts: dict[str, tuple[asyncio.Future[dict[str, Any]], str, list[str], str | None]] = {}
 
     @property
     def connected(self) -> bool:
@@ -105,6 +109,9 @@ class PhoneDevice:
             self.ws = None
             if self._playback_done is not None:
                 self._playback_done.set()
+            for future, *_ in self._prompts.values():
+                if not future.done():
+                    future.set_result({"answered": False, "index": None, "option": None, "reason": "disconnected"})
             _LOGGER.info("Phone %s disconnected", self.name)
             self._notify()
 
@@ -118,12 +125,76 @@ class PhoneDevice:
             # nothing to wait for
             if self._playback_done is not None:
                 self._playback_done.set()
+        elif kind == "prompt_answer":
+            self._handle_answer(data)
         elif kind == "play_error":
             self._play_failed = True
             if self._playback_done is not None:
                 self._playback_done.set()
         elif kind in ("voice_start", "voice_stop") and self.voice_listener is not None:
             self.voice_listener(data)
+
+    @callback
+    def _handle_answer(self, data: dict[str, Any]) -> None:
+        pending = self._prompts.get(str(data.get("id")))
+        if pending is None:
+            return
+        future, question, options, entity_id = pending
+        index = data.get("index")
+        answered = isinstance(index, int) and 0 <= index < len(options)
+        result = {
+            "answered": answered,
+            "index": index if answered else None,
+            "option": options[index] if answered else None,
+            "reason": None if answered else (data.get("reason") or "dismissed"),
+        }
+        if not future.done():
+            future.set_result(result)
+        self.hass.bus.async_fire(
+            EVENT_ANSWER,
+            {"entity_id": entity_id, "id": data.get("id"), "question": question, **result},
+        )
+
+    async def async_ask(
+        self,
+        question: str,
+        options: list[str],
+        *,
+        timeout: int,
+        wait: bool,
+        entity_id: str | None = None,
+        media: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Show a question with 2-4 buttons on the phone and, if asked, wait for the answer."""
+        prompt_id = uuid.uuid4().hex[:12]
+        future: asyncio.Future[dict[str, Any]] = self.hass.loop.create_future()
+        self._prompts[prompt_id] = (future, question, options, entity_id)
+        try:
+            payload: dict[str, Any] = {
+                "type": "prompt",
+                "id": prompt_id,
+                "question": question,
+                "options": options,
+                "timeout": timeout,
+            }
+            if media is not None:
+                payload["media"] = media
+            await self.async_send(payload)
+            if not wait:
+                # keep it registered so the answer still fires the event
+                self.hass.loop.call_later(timeout + 10 if timeout else 3600, self._prompts.pop, prompt_id, None)
+                return {"id": prompt_id}
+            try:
+                result = await asyncio.wait_for(future, timeout + 10 if timeout else None)
+            except TimeoutError:
+                result = {"answered": False, "index": None, "option": None, "reason": "timeout"}
+            return {"id": prompt_id, **result}
+        except BaseException:
+            self._prompts.pop(prompt_id, None)
+            raise
+        finally:
+            if wait:
+                self._prompts.pop(prompt_id, None)
 
     @callback
     def handle_audio(self, chunk: bytes) -> None:

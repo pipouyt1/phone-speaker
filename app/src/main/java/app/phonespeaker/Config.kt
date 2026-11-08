@@ -36,10 +36,18 @@ class Config(private val ctx: Context) {
         set(v) = prefs.edit().putString("mode", v).apply()
 
     /**
-     * In voice mode the microphone is always streaming to Home Assistant, whose wake word
-     * engine decides when someone is talking to the assistant: nothing to configure here.
+     * Assistant mode: the microphone stays off until the phone's assistant is invoked (power
+     * button long-press, assist gesture) or Talk is pressed, like the assistant on any phone.
      */
-    val listen: Boolean get() = voice
+    var assistantMode: Boolean
+        get() = prefs.getBoolean("assistant_mode", false)
+        set(v) = prefs.edit().putBoolean("assistant_mode", v).apply()
+
+    /**
+     * Unless assistant mode is on, in voice mode the microphone is always streaming to Home
+     * Assistant, whose wake word engine decides when someone is talking to the assistant.
+     */
+    val listen: Boolean get() = voice && !assistantMode
 
     /**
      * Volume of the short beep when the assistant starts listening (wake word heard or Talk

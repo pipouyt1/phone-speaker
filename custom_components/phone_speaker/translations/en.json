@@ -30,5 +30,37 @@
         }
       }
     }
+  },
+  "services": {
+    "ask": {
+      "name": "Ask a question",
+      "description": "Shows a question with 2 to 4 buttons in the assistant pill on the phone. Returns the button that was pressed, and fires the phone_speaker_answer event.",
+      "fields": {
+        "question": {
+          "name": "Question",
+          "description": "The text to show."
+        },
+        "options": {
+          "name": "Buttons",
+          "description": "2 to 4 button labels. The first one is highlighted."
+        },
+        "timeout": {
+          "name": "Timeout",
+          "description": "Seconds before the question disappears. 0 keeps it until answered."
+        },
+        "wait": {
+          "name": "Wait for the answer",
+          "description": "Wait until a button is pressed (or the time runs out) and return the answer. Turn off to continue right away and react to the event instead."
+        },
+        "camera": {
+          "name": "Camera",
+          "description": "A camera to show above the question: a live picture that refreshes every couple of seconds."
+        },
+        "media": {
+          "name": "Image or video",
+          "description": "A picture or video URL, or a media source, to show above the question."
+        }
+      }
+    }
   }
 }

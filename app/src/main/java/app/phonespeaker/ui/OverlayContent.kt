@@ -28,12 +28,14 @@ fun OverlayContent() {
     var reply by remember { mutableStateOf(SpeakerService.lastReply) }
     var level by remember { mutableStateOf(SpeakerService.micLevel) }
     var shown by remember { mutableStateOf("listening") }
+    var prompt by remember { mutableStateOf(SpeakerService.prompt) }
     LaunchedEffect(Unit) {
         while (true) {
             phase = SpeakerService.voicePhase
             heard = SpeakerService.lastHeard
             reply = SpeakerService.lastReply
             level = SpeakerService.micLevel
+            prompt = SpeakerService.prompt
             if (phase in Active) shown = phase
             delay(120)
         }
@@ -42,7 +44,9 @@ fun OverlayContent() {
     PhoneSpeakerTheme {
         AnimatedVisibility(visibleState = visible, enter = slideInVertically { -it } + fadeIn()) {
             Box(Modifier.padding(12.dp)) {
-                AssistantCard(shown, heard, reply, level, Modifier.fillMaxWidth())
+                val asking = prompt
+                if (asking != null) PromptCard(asking, SpeakerService::answerPrompt, Modifier.fillMaxWidth())
+                else AssistantCard(shown, heard, reply, level, Modifier.fillMaxWidth())
             }
         }
     }

@@ -88,6 +88,12 @@ fun PhoneSpeakerApp(state: UiState, actions: AppActions) {
         }
         // content sent from Home Assistant covers everything until it is closed
         state.display?.let { DisplayOverlay(it, actions::dismissDisplay) }
+        // a question from Home Assistant floats on top of everything
+        state.prompt?.let {
+            Box(Modifier.fillMaxSize().statusBarsPadding().padding(12.dp), contentAlignment = Alignment.TopCenter) {
+                PromptCard(it, actions::answerPrompt, Modifier.widthIn(max = 640.dp).fillMaxWidth())
+            }
+        }
     }
 }
 
@@ -326,6 +332,11 @@ private fun SoundScreen(state: UiState, actions: AppActions, onOpenRoom: (() -> 
 
         if (state.mode == Config.MODE_VOICE) {
             SectionCard("Asistente del teléfono") {
+                SwitchRow(
+                    "Modo asistente",
+                    "El micrófono no escucha hasta que invoques al asistente con el botón de encendido (mantenlo pulsado) o el gesto del asistente. No hay palabra de activación.",
+                    state.assistantMode, actions::setAssistantMode,
+                )
                 Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
                         "Puedes usar este dispositivo como el asistente del teléfono: mantén pulsado el botón de inicio o usa el gesto del asistente y aparecerá la píldora flotante para hablar con Home Assistant.",
@@ -445,7 +456,7 @@ private fun SwitchRow(title: String, description: String, checked: Boolean, onCh
 }
 
 @Composable
-private fun SectionCard(title: String, content: @Composable () -> Unit) {
+internal fun SectionCard(title: String, content: @Composable () -> Unit) {
     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
         Column(Modifier.padding(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 16.dp))
@@ -504,6 +515,7 @@ private fun ConnectionScreen(state: UiState, actions: AppActions) {
                 )
             }
         }
+        UpdateCard(state.version)
         FilledTonalButton(
             onClick = actions::toggleService,
             shapes = ButtonDefaults.shapes(),

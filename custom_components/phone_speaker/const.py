@@ -12,6 +12,9 @@ MODE_SMART = "smart"  # + audio output select and battery sensor
 MODE_VOICE = "voice"  # + Assist satellite (microphone, wake word, voice replies)
 MODES = (MODE_GENERIC, MODE_SMART, MODE_VOICE)
 
+EVENT_ANSWER = "phone_speaker_answer"  # fired when a question asked with phone_speaker.ask is answered
+ASK_TIMEOUT = 60  # default seconds a question stays on the phone
+
 PAIR_URL = "/api/phone_speaker/pair"
 WS_URL = "/api/phone_speaker/ws"
 

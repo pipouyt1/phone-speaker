@@ -118,7 +118,7 @@ private fun RemoteImage(url: String) {
 }
 
 /** Download an image, scaled down so a large camera snapshot does not exhaust memory. */
-private fun loadBitmap(url: String): Bitmap? = try {
+internal fun loadBitmap(url: String): Bitmap? = try {
     HaClient.httpClient.newCall(Request.Builder().url(url).build()).execute().use { response ->
         val bytes = response.body?.bytes()
         if (!response.isSuccessful || bytes == null) {

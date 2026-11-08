@@ -1,6 +1,7 @@
 package app.phonespeaker.ui
 
 import app.phonespeaker.DisplayItem
+import app.phonespeaker.PromptItem
 
 /** Everything the screens show, read from the service and the saved settings. */
 data class UiState(
@@ -24,10 +25,12 @@ data class UiState(
     val fullscreen: Boolean,
     val launcher: Boolean,
     val floating: Boolean,
+    val assistantMode: Boolean,
     val assistantDefault: Boolean,
     val room: Boolean,
     val roomUrl: String,
     val reply: String,
+    val prompt: PromptItem?,
 )
 
 /** What the screens can ask the app to do. */
@@ -47,6 +50,9 @@ interface AppActions {
     fun setFullscreen(enabled: Boolean)
     fun setLauncher(enabled: Boolean)
     fun setFloating(enabled: Boolean)
+    fun setAssistantMode(enabled: Boolean)
+    /** Answer the question on screen with button [index]. */
+    fun answerPrompt(index: Int)
     /** Open Android's "digital assistant app" settings so the user can pick Phone Speaker. */
     fun openAssistantSettings()
     fun setRoom(enabled: Boolean)

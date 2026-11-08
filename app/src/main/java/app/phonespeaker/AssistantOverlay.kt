@@ -29,6 +29,19 @@ class AssistantOverlay(private val ctx: Context) {
     private var owner: Owner? = null
 
     val showing: Boolean get() = view != null
+    private var params: WindowManager.LayoutParams? = null
+    private var touchable = false
+
+    /** A question with buttons needs touches; the plain assistant pill lets them through. */
+    fun setTouchable(value: Boolean) {
+        val v = view ?: return
+        val p = params ?: return
+        if (value == touchable) return
+        touchable = value
+        p.flags = if (value) p.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+        else p.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        runCatching { windowManager.updateViewLayout(v, p) }
+    }
 
     fun show() {
         if (view != null) return
@@ -57,6 +70,8 @@ class AssistantOverlay(private val ctx: Context) {
         }
         try {
             windowManager.addView(composeView, params)
+            this.params = params
+            touchable = false
             lifecycleOwner.resume()
             view = composeView
         } catch (e: Exception) {

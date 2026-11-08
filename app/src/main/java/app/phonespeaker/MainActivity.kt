@@ -128,10 +128,12 @@ class MainActivity : ComponentActivity(), AppActions {
             fullscreen = cfg.fullscreen,
             launcher = cfg.launcher,
             floating = cfg.floating,
+            assistantMode = cfg.assistantMode,
             assistantDefault = cfg.defaultAssistant,
             room = cfg.room,
             roomUrl = cfg.roomUrl,
             reply = SpeakerService.lastReply,
+            prompt = SpeakerService.prompt,
         )
     }
 
@@ -222,6 +224,17 @@ class MainActivity : ComponentActivity(), AppActions {
 
     override fun setFloating(enabled: Boolean) {
         cfg.floating = enabled
+        tick++
+    }
+
+    override fun answerPrompt(index: Int) {
+        SpeakerService.answerPrompt(index)
+        tick++
+    }
+
+    override fun setAssistantMode(enabled: Boolean) {
+        cfg.assistantMode = enabled
+        SpeakerService.instance?.applyListenMode()
         tick++
     }
 

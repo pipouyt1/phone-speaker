@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import mimetypes
 from typing import Any
+
+import voluptuous as vol
 
 from homeassistant.components import media_source
 from homeassistant.components.media_player import (
@@ -15,11 +18,13 @@ from homeassistant.components.media_player import (
     async_process_play_media_url,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import CONF_DEVICE_ID, DOMAIN
+from .const import ASK_TIMEOUT, CONF_DEVICE_ID, DOMAIN
 from .entity import PhoneEntity
 
 _STATES = {
@@ -46,6 +51,23 @@ async def async_setup_entry(
 ) -> None:
     device = hass.data[DOMAIN]["devices"][entry.data[CONF_DEVICE_ID]]
     async_add_entities([PhoneSpeakerPlayer(device)])
+    entity_platform.async_get_current_platform().async_register_entity_service(
+        "ask",
+        {
+            vol.Required("question"): cv.string,
+            vol.Required("options"): vol.All(
+                cv.ensure_list, [cv.string], vol.Length(min=2, max=4)
+            ),
+            vol.Optional("timeout", default=ASK_TIMEOUT): vol.All(
+                vol.Coerce(int), vol.Range(min=0, max=3600)
+            ),
+            vol.Optional("wait", default=True): cv.boolean,
+            vol.Optional("camera"): cv.entity_domain("camera"),
+            vol.Optional("media"): cv.string,
+        },
+        "async_ask",
+        supports_response=SupportsResponse.OPTIONAL,
+    )
 
 
 class PhoneSpeakerPlayer(PhoneEntity, MediaPlayerEntity):
@@ -116,6 +138,40 @@ class PhoneSpeakerPlayer(PhoneEntity, MediaPlayerEntity):
                 "url": media_id,
                 "announce": bool(kwargs.get(ATTR_MEDIA_ANNOUNCE)),
             }
+        )
+
+    async def async_ask(
+        self,
+        question: str,
+        options: list[str],
+        timeout: int,
+        wait: bool,
+        camera: str | None = None,
+        media: str | None = None,
+    ) -> dict[str, Any]:
+        """phone_speaker.ask: show a question with buttons, return which one was pressed."""
+        attachment: dict[str, Any] | None = None
+        if camera:
+            state = self.hass.states.get(camera)
+            picture = state.attributes.get("entity_picture") if state else None
+            if not picture:
+                raise HomeAssistantError(f"{camera} has no picture available")
+            # the phone asks for a new snapshot every couple of seconds
+            attachment = {"kind": "image", "url": picture, "refresh": 2}
+        elif media:
+            mime: str | None = None
+            if media_source.is_media_source_id(media):
+                sourced = await media_source.async_resolve_media(self.hass, media, self.entity_id)
+                media, mime = sourced.url, sourced.mime_type
+            mime = mime or mimetypes.guess_type(media.split("?")[0])[0] or "image/jpeg"
+            kind = "video" if _display_kind(mime) == "video" else "image"
+            attachment = {
+                "kind": kind,
+                "url": async_process_play_media_url(self.hass, media, allow_relative_url=True),
+                "refresh": 0,
+            }
+        return await self.device.async_ask(
+            question, options, timeout=timeout, wait=wait, entity_id=self.entity_id, media=attachment
         )
 
     async def async_browse_media(

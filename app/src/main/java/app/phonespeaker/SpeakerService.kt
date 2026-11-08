@@ -59,6 +59,13 @@ class SpeakerService : Service(), HaClient.Listener {
 
         fun dismissDisplay() { screenItem = null }
 
+        /** The question Home Assistant is asking right now, if any. */
+        @Volatile var prompt: PromptItem? = null
+            private set
+
+        /** The user pressed answer [index] (0-based); -1 means no answer. */
+        fun answerPrompt(index: Int) { instance?.answer(index, "") }
+
         /** The assistant's last answer, as text (shown while it speaks). */
         @Volatile var lastReply: String = ""
             private set
@@ -69,6 +76,8 @@ class SpeakerService : Service(), HaClient.Listener {
 
         fun hasMicPermission(ctx: Context) =
             ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+
+        private const val ASSISTANT_IDLE = "Modo asistente: el micrófono está apagado hasta que invoques al asistente."
 
         @Volatile private var assistantRequested = false
 
@@ -202,7 +211,9 @@ class SpeakerService : Service(), HaClient.Listener {
     override fun onConnected() {
         pushState()
         main.post {
-            if (!takePendingAssistant() && cfg.voice && cfg.listen) maybeListen()
+            if (!takePendingAssistant() && cfg.voice) {
+                if (cfg.listen) maybeListen() else applyListenMode()
+            }
         }
     }
 
@@ -210,7 +221,55 @@ class SpeakerService : Service(), HaClient.Listener {
         main.post {
             streaming = false
             capture?.stop()
+            // nobody to answer to now
+            if (prompt != null) { prompt = null; updateOverlay() }
         }
+    }
+
+    // ---- questions with buttons ------------------------------------------------------------
+
+    private fun showPrompt(msg: JSONObject) {
+        val id = msg.optString("id")
+        val array = msg.optJSONArray("options")
+        val options = List(array?.length() ?: 0) { array!!.optString(it) }.filter { it.isNotBlank() }.take(4)
+        if (id.isEmpty() || options.size < 2) return
+        val seconds = msg.optInt("timeout", 60)
+        val media = msg.optJSONObject("media")?.let {
+            val url = it.optString("url")
+            if (url.isEmpty()) null
+            else PromptMedia(it.optString("kind", "image"), HaClient.resolveMediaUrl(cfg.baseUrl, url), it.optInt("refresh", 0))
+        }
+        main.post {
+            if (!uiVisible && !Settings.canDrawOverlays(this)) {
+                sendAnswer(id, -1, "no_overlay_permission")
+                return@post
+            }
+            prompt?.let { sendAnswer(it.id, -1, "replaced") }
+            prompt = PromptItem(
+                id,
+                msg.optString("question"),
+                options,
+                if (seconds > 0) SystemClock.elapsedRealtime() + seconds * 1000L else 0L,
+                media,
+            )
+            wakeScreen()
+            updateOverlay()
+        }
+    }
+
+    private fun answer(index: Int, reason: String) {
+        main.post {
+            val asked = prompt ?: return@post
+            prompt = null
+            sendAnswer(asked.id, index, reason)
+            // the card goes away at once instead of lingering like the assistant's
+            overlayWantedAt = 0L
+            updateOverlay()
+        }
+    }
+
+    private fun sendAnswer(id: String, index: Int, reason: String) {
+        client?.send(JSONObject().put("type", "prompt_answer").put("id", id).put("index", index).put("reason", reason))
     }
 
     // ---- commands from Home Assistant ------------------------------------------
@@ -238,6 +297,7 @@ class SpeakerService : Service(), HaClient.Listener {
             "volume" -> p.setVolume(msg.optDouble("level", p.volume.toDouble()).toFloat())
             "mute" -> p.setMuted(msg.optBoolean("muted"))
             "output" -> selectOutput(msg.optString("name"))
+            "prompt" -> showPrompt(msg)
             "display" -> showDisplay(msg)
             "display_clear" -> screenItem = null
             "attached" -> main.post {
@@ -310,13 +370,16 @@ class SpeakerService : Service(), HaClient.Listener {
         val active = voicePhase == "listening" || voicePhase == "thinking" || voicePhase == "speaking" || voicePhase == "error"
         // an explicit invocation from the phone's assistant always shows the pill, even when the
         // wake-word overlay is turned off
-        val wanted = cfg.voice && !uiVisible && Settings.canDrawOverlays(this) && active &&
-            (cfg.floating || assistantSession)
         val now = SystemClock.elapsedRealtime()
+        val asking = prompt
+        if (asking != null && asking.until > 0 && now >= asking.until) answer(-1, "timeout")
+        val wanted = !uiVisible && Settings.canDrawOverlays(this) &&
+            (asking != null || (cfg.voice && active && (cfg.floating || assistantSession)))
         val window = overlay ?: AssistantOverlay(this).also { overlay = it }
         if (wanted) {
             overlayWantedAt = now
             if (!window.showing) window.show()
+            window.setTouchable(asking != null)
         } else if (window.showing && (uiVisible || now - overlayWantedAt > 4_500L)) {
             window.hide()
         }
@@ -448,6 +511,23 @@ class SpeakerService : Service(), HaClient.Listener {
         if (!cfg.listen) capture?.stop()
     }
 
+    /** Assistant mode was switched: stop listening for the wake word, or start doing so again. */
+    fun applyListenMode() {
+        main.post {
+            if (cfg.listen) {
+                maybeListen()
+            } else if (streaming && !assistantSession) {
+                stopVoice()
+                voicePhase = "idle"
+                voiceStatus = ASSISTANT_IDLE
+            } else if (!streaming) {
+                capture?.stop()
+                voicePhase = "idle"
+                voiceStatus = ASSISTANT_IDLE
+            }
+        }
+    }
+
     private fun maybeListen() {
         if (!voiceEnabled()) return
         main.removeCallbacks(restartListening)
@@ -462,6 +542,10 @@ class SpeakerService : Service(), HaClient.Listener {
             main.postDelayed(restartListening, delay)
         } else if (!cfg.listen && !streaming) {
             capture?.stop()
+            if (cfg.voice && !announcePlaying) {
+                voicePhase = "idle"
+                voiceStatus = ASSISTANT_IDLE
+            }
         }
     }
 

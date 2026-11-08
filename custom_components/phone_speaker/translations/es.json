@@ -30,5 +30,37 @@
         }
       }
     }
+  },
+  "services": {
+    "ask": {
+      "name": "Hacer una pregunta",
+      "description": "Muestra una pregunta con 2 a 4 botones en la píldora del asistente del teléfono. Devuelve el botón que se pulsó y lanza el evento phone_speaker_answer.",
+      "fields": {
+        "question": {
+          "name": "Pregunta",
+          "description": "El texto a mostrar."
+        },
+        "options": {
+          "name": "Botones",
+          "description": "De 2 a 4 textos de botón. El primero va resaltado."
+        },
+        "timeout": {
+          "name": "Tiempo límite",
+          "description": "Segundos antes de que la pregunta desaparezca. 0 la deja hasta que se responda."
+        },
+        "wait": {
+          "name": "Esperar la respuesta",
+          "description": "Espera a que se pulse un botón (o se acabe el tiempo) y devuelve la respuesta. Desactívalo para seguir de inmediato y reaccionar al evento."
+        },
+        "camera": {
+          "name": "Cámara",
+          "description": "Una cámara para mostrar sobre la pregunta: una imagen en vivo que se actualiza cada un par de segundos."
+        },
+        "media": {
+          "name": "Imagen o video",
+          "description": "La dirección de una imagen o video, o una fuente multimedia, para mostrar sobre la pregunta."
+        }
+      }
+    }
   }
 }

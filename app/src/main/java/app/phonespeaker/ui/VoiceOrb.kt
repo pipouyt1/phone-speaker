@@ -7,7 +7,9 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -76,7 +78,7 @@ fun VoiceOrb(phase: String, micLevel: Int, modifier: Modifier = Modifier, size: 
     var from by remember { mutableStateOf(target) }
     var to by remember { mutableStateOf(target) }
     val progress = remember { Animatable(1f) }
-    val spring = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
+    val spring = spring<Float>(dampingRatio = 0.9f, stiffness = Spring.StiffnessMediumLow)
     LaunchedEffect(target) {
         if (target !== to) {
             from = to
@@ -101,7 +103,8 @@ fun VoiceOrb(phase: String, micLevel: Int, modifier: Modifier = Modifier, size: 
     )
     val swell by animateFloatAsState(
         1f + micLevel.coerceIn(0, 100) / 100f * 0.12f,
-        MaterialTheme.motionScheme.fastSpatialSpec(),
+        // follows the microphone level, which changes many times a second: no bounce here
+        spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium),
         label = "orb swell",
     )
 
@@ -110,7 +113,7 @@ fun VoiceOrb(phase: String, micLevel: Int, modifier: Modifier = Modifier, size: 
             Modifier
                 .size(size)
                 .graphicsLayer { rotationZ = angle; scaleX = swell; scaleY = swell }
-                .clip(MorphShape(morph, progress.value))
+                .clip(MorphShape(morph, progress.value.coerceIn(0f, 1f)))
                 .background(color),
         )
         Icon(AppIcons.Mic, contentDescription = null, tint = iconColor, modifier = Modifier.size(size * 0.3f))
