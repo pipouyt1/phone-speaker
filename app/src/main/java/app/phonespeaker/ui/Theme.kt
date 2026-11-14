@@ -27,7 +27,7 @@ fun PhoneSpeakerTheme(content: @Composable () -> Unit) {
     }
     MaterialExpressiveTheme(
         colorScheme = colors,
-        motionScheme = MotionScheme.standard(),
+        motionScheme = if (Perf.on) SnapMotion else MotionScheme.standard(),
         content = content,
     )
 }

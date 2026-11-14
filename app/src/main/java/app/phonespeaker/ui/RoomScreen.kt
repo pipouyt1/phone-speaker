@@ -11,6 +11,8 @@ import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Spring
@@ -128,7 +130,7 @@ private val ActivePhases = setOf("listening", "thinking", "speaking", "error")
 @Composable
 private fun BoxScope.AssistantFloat(state: UiState) {
     val voice = state.mode == Config.MODE_VOICE && state.running && state.connected
-    val active = voice && state.phase in ActivePhases
+    val active = voice && !Perf.on && state.phase in ActivePhases
     var lingering by remember { mutableStateOf(false) }
     var shown by remember { mutableStateOf("listening") }
     LaunchedEffect(state.phase) { if (state.phase in ActivePhases) shown = state.phase }
@@ -177,7 +179,7 @@ fun AssistantCard(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         tonalElevation = 6.dp,
         shadowElevation = 8.dp,
-        modifier = modifier.animateContentSize(spring<IntSize>(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)),
+        modifier = modifier.unlessPerf { animateContentSize(spring<IntSize>(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)) },
     ) {
         Row(
             Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
@@ -190,6 +192,7 @@ fun AssistantCard(
                 targetState = title to subtitle,
                 modifier = Modifier.weight(1f),
                 transitionSpec = {
+                    if (Perf.on) EnterTransition.None togetherWith ExitTransition.None else
                     fadeIn(tween(200, delayMillis = 60)) togetherWith fadeOut(tween(120)) using SizeTransform(clip = false) { _, _ -> snap() }
                 },
                 label = "assistant text",
@@ -213,7 +216,7 @@ private fun LevelBars(level: Int) {
     val energy = 0.25f + level.coerceIn(0, 100) / 100f * 0.75f
     Row(Modifier.height(32.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
         shape.forEach { weight ->
-            val height by animateDpAsState((32.dp * weight * energy).coerceAtLeast(6.dp), label = "bar")
+            val height by animateDpAsState((32.dp * weight * energy).coerceAtLeast(6.dp), if (Perf.on) snap() else spring(), label = "bar")
             Box(Modifier.size(width = 5.dp, height = height).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(3.dp)))
         }
     }

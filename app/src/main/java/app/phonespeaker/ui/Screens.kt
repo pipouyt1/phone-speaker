@@ -54,10 +54,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import android.content.Intent
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -85,6 +90,35 @@ fun PhoneSpeakerApp(state: UiState, actions: AppActions) {
             roomShowing -> RoomScreen(state, onSettings = { showSettings = true })
             state.paired -> MainTabs(state, actions, onOpenRoom = if (roomConfigured) ({ showSettings = false }) else null)
             else -> CenteredContent { OnboardingScreen(state, actions) }
+        }
+        // launcher mode with Home Assistant out of reach: a full-screen message, until it comes back
+        var offlineDismissed by rememberSaveable { mutableStateOf(false) }
+        var offlineApps by rememberSaveable { mutableStateOf(false) }
+        LaunchedEffect(state.connected) { if (state.connected) offlineDismissed = false }
+        // a short drop (or the first seconds after starting) is not worth a full-screen message
+        var offlineLongEnough by remember { mutableStateOf(false) }
+        val down = state.paired && state.launcher && state.running && !state.connected
+        LaunchedEffect(down) {
+            if (down) {
+                delay(8_000L)
+                offlineLongEnough = true
+            } else {
+                offlineLongEnough = false
+            }
+        }
+        if (down && offlineLongEnough && !offlineDismissed) {
+            val context = LocalContext.current
+            OfflineScreen(
+                state.errorKind, state.error,
+                onApps = { offlineApps = true },
+                onSettings = { offlineDismissed = true },
+                onWifiSettings = {
+                    context.startActivity(Intent(android.provider.Settings.ACTION_WIFI_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                },
+                // the pairing was refused: forget it, and the app goes back to the pairing screen
+                onSignIn = actions::unpair,
+            )
+            if (offlineApps) AppsOverlay { offlineApps = false }
         }
         // content sent from Home Assistant covers everything until it is closed
         state.display?.let { DisplayOverlay(it, actions::dismissDisplay) }
@@ -143,6 +177,7 @@ private fun HomeScreen(state: UiState, actions: AppActions, onOpenRoom: (() -> U
 
     val (title, subtitle) = when {
         !state.running -> "Detenido" to "Toca Iniciar para conectar con Home Assistant"
+        connecting && state.launcher -> "Sin conexión" to "Reintentando con Home Assistant"
         connecting -> "Conectando" to (state.error ?: "Buscando Home Assistant")
         !voice -> "Parlante listo" to "Home Assistant puede reproducir audio aquí"
         else -> when (state.phase) {
@@ -163,8 +198,11 @@ private fun HomeScreen(state: UiState, actions: AppActions, onOpenRoom: (() -> U
             val textAlign = if (wide) TextAlign.Start else TextAlign.Center
 
             val orb: @Composable () -> Unit = {
-                if (connecting) {
-                    Box(Modifier.size(orbSize), contentAlignment = Alignment.Center) { LoadingIndicator(Modifier.size(96.dp)) }
+                if (connecting && state.launcher) {
+                    // offline in launcher mode: a calm, dimmed orb instead of a spinner
+                    VoiceOrb(phase = "idle", micLevel = 0, size = orbSize, modifier = Modifier.alpha(0.35f))
+                } else if (connecting) {
+                    Box(Modifier.size(orbSize), contentAlignment = Alignment.Center) { Busy(Modifier.size(96.dp)) }
                 } else {
                     VoiceOrb(phase = phase, micLevel = if (voice && state.running) state.micLevel else 0, size = orbSize)
                 }
@@ -173,6 +211,21 @@ private fun HomeScreen(state: UiState, actions: AppActions, onOpenRoom: (() -> U
                 HomeHeader(state, compact = wide)
                 Text(title, style = MaterialTheme.typography.headlineMediumEmphasized, textAlign = textAlign)
                 Text(subtitle, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = textAlign)
+                if (connecting && state.launcher) {
+                    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Home Assistant no responde", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onErrorContainer)
+                            Text(
+                                "Se reconecta solo. Mientras tanto el reloj y las aplicaciones siguen funcionando.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                            )
+                            state.error?.let {
+                                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f))
+                            }
+                        }
+                    }
+                }
                 if (voice && state.lastHeard.isNotEmpty()) {
                     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -356,6 +409,16 @@ private fun SoundScreen(state: UiState, actions: AppActions, onOpenRoom: (() -> 
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    if (!state.batteryUnrestricted) {
+                        Text(
+                            "Para que siga escuchando y reproduciendo con la pantalla apagada, quita las restricciones de batería.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        FilledTonalButton(onClick = actions::requestBatteryExemption, shapes = ButtonDefaults.shapes()) {
+                            Text("Sin restricciones de batería")
+                        }
+                    }
                     if (!state.overlayGranted) {
                         Text(
                             "Para que la píldora aparezca sobre otras apps, permite \"Mostrar sobre otras apps\".",
@@ -367,6 +430,16 @@ private fun SoundScreen(state: UiState, actions: AppActions, onOpenRoom: (() -> 
                         }
                     }
                 }
+            }
+        }
+
+        SectionCard("Rendimiento") {
+            Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SwitchRow(
+                    "Modo de rendimiento",
+                    "Desactiva todas las animaciones y la píldora del asistente. Útil en teléfonos lentos. Las preguntas de las automatizaciones se siguen mostrando, sin animación.",
+                    state.performance, actions::setPerformance,
+                )
             }
         }
 
@@ -590,7 +663,7 @@ private fun OnboardingScreen(state: UiState, actions: AppActions) {
             shapes = ButtonDefaults.shapes(),
             modifier = Modifier.fillMaxWidth().height(64.dp),
         ) {
-            if (busy) LoadingIndicator(Modifier.size(32.dp)) else Text("Emparejar", style = MaterialTheme.typography.titleMedium)
+            if (busy) Busy(Modifier.size(32.dp)) else Text("Emparejar", style = MaterialTheme.typography.titleMedium)
         }
     }
 }

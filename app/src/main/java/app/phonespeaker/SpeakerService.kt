@@ -104,6 +104,7 @@ class SpeakerService : Service(), HaClient.Listener {
     private lateinit var cfg: Config
     private var player: PlayerController? = null
     private var wifiLock: WifiManager.WifiLock? = null
+    private var cpuLock: PowerManager.WakeLock? = null
     private var selectedOutput = AudioOutputs.DEFAULT
     private val main = Handler(Looper.getMainLooper())
     private val ticker = object : Runnable {
@@ -182,6 +183,10 @@ class SpeakerService : Service(), HaClient.Listener {
         wifiLock = applicationContext.getSystemService(WifiManager::class.java)
             .createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "phone-speaker")
             .apply { setReferenceCounted(false); acquire() }
+        // keeps the CPU awake so the connection and the microphone survive a switched-off screen
+        cpuLock = getSystemService(PowerManager::class.java)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "phonespeaker:service")
+            .apply { setReferenceCounted(false); acquire() }
         c.start()
         main.postDelayed(ticker, STATE_INTERVAL_MS)
         main.post(overlayTick)
@@ -202,6 +207,7 @@ class SpeakerService : Service(), HaClient.Listener {
         client?.stop()
         client = null
         wifiLock?.takeIf { it.isHeld }?.release()
+        cpuLock?.takeIf { it.isHeld }?.release()
         player?.shutdown()
         super.onDestroy()
     }
@@ -374,7 +380,7 @@ class SpeakerService : Service(), HaClient.Listener {
         val asking = prompt
         if (asking != null && asking.until > 0 && now >= asking.until) answer(-1, "timeout")
         val wanted = !uiVisible && Settings.canDrawOverlays(this) &&
-            (asking != null || (cfg.voice && active && (cfg.floating || assistantSession)))
+            (asking != null || (cfg.voice && active && !cfg.performance && (cfg.floating || assistantSession)))
         val window = overlay ?: AssistantOverlay(this).also { overlay = it }
         if (wanted) {
             overlayWantedAt = now
@@ -591,7 +597,7 @@ class SpeakerService : Service(), HaClient.Listener {
             "wake_word" -> {
                 voiceErrors = 0; lastReply = ""; suppressReplyUntil = 0L
                 voiceStatus = "Te escuché..."; voicePhase = "listening"
-                if (cfg.floating && !uiVisible) wakeScreen()
+                if (cfg.floating && !cfg.performance && !uiVisible) wakeScreen()
                 chime()
             }
             "reply" -> if (SystemClock.elapsedRealtime() >= suppressReplyUntil) lastReply = msg.optString("text")

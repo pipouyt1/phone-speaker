@@ -112,7 +112,7 @@ private fun RemoteImage(url: String) {
         when {
             shown != null -> Image(shown, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
             failed -> Text("No se pudo cargar la imagen", color = Color.White)
-            else -> LoadingIndicator(Modifier.size(64.dp))
+            else -> Busy(Modifier.size(64.dp))
         }
     }
 }

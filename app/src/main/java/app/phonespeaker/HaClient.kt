@@ -93,6 +93,10 @@ class HaClient(private val cfg: Config, private val listener: Listener) {
     @Volatile var lastError: String? = null
         private set
 
+    /** What kind of failure [lastError] is: "host" (unreachable), "integration" (answers, but no Phone Speaker) or "rejected" (pairing refused). */
+    @Volatile var lastKind: String = "host"
+        private set
+
     fun start() {
         running = true
         connect()
@@ -133,6 +137,7 @@ class HaClient(private val cfg: Config, private val listener: Listener) {
                 if (msg.optString("type") == "hello_ok") {
                     attempt = 0
                     lastError = null
+                    lastKind = "host"
                     setConnected(true)
                 } else {
                     listener.onCommand(msg)
@@ -144,13 +149,17 @@ class HaClient(private val cfg: Config, private val listener: Listener) {
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                if (code == 4401) lastError = "Home Assistant rechazó el emparejamiento: vuelve a emparejar"
+                if (code == 4401) {
+                    lastError = "Home Assistant rechazó el emparejamiento: vuelve a emparejar"
+                    lastKind = "rejected"
+                }
                 dropped(webSocket)
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 Log.w(TAG, "websocket failure: $t")
                 lastError = "Sin conexión con Home Assistant (${t.message})"
+                lastKind = if (response?.code == 404) "integration" else "host"
                 dropped(webSocket)
             }
         })

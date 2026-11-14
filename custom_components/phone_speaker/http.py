@@ -89,7 +89,7 @@ class PairView(HomeAssistantView):
             pending.pop(stale)
 
         match = next(
-            (p for c, p in pending.items() if hmac.compare_digest(c, code)), None
+            (p for c, p in pending.items() if hmac.compare_digest(c.encode(), code.encode())), None
         )
         if match is None or match["result"] is not None:
             fails.append(now)
@@ -213,6 +213,6 @@ def _find_device(hass: HomeAssistant, token: Any):
     if not isinstance(token, str):
         return None
     for device in hass.data[DOMAIN]["devices"].values():
-        if hmac.compare_digest(device.token, token):
+        if hmac.compare_digest(device.token.encode(), token.encode()):
             return device
     return None

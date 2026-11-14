@@ -1,6 +1,7 @@
 package app.phonespeaker.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
@@ -42,7 +43,7 @@ fun OverlayContent() {
     }
     val visible = remember { MutableTransitionState(false).apply { targetState = true } }
     PhoneSpeakerTheme {
-        AnimatedVisibility(visibleState = visible, enter = slideInVertically { -it } + fadeIn()) {
+        AnimatedVisibility(visibleState = visible, enter = if (Perf.on) EnterTransition.None else slideInVertically { -it } + fadeIn()) {
             Box(Modifier.padding(12.dp)) {
                 val asking = prompt
                 if (asking != null) PromptCard(asking, SpeakerService::answerPrompt, Modifier.fillMaxWidth())

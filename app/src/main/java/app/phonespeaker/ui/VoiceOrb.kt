@@ -84,25 +84,28 @@ fun VoiceOrb(phase: String, micLevel: Int, modifier: Modifier = Modifier, size: 
             from = to
             to = target
             progress.snapTo(0f)
-            progress.animateTo(1f, spring)
+            if (Perf.on) progress.snapTo(1f) else progress.animateTo(1f, spring)
         }
     }
     val morph = remember(from, to) { Morph(from.normalized(), to.normalized()) }
 
-    val spin = rememberInfiniteTransition(label = "orb spin")
     val seconds = when (phase) {
         "thinking" -> 6
         "waiting" -> 24
         "listening" -> 14
         else -> 40
     }
-    val angle by spin.animateFloat(
-        0f, 360f,
-        infiniteRepeatable(tween(seconds * 1000, easing = LinearEasing), RepeatMode.Restart),
-        label = "orb angle",
-    )
+    val angle = if (Perf.on) 0f else {
+        val spin = rememberInfiniteTransition(label = "orb spin")
+        val turning by spin.animateFloat(
+            0f, 360f,
+            infiniteRepeatable(tween(seconds * 1000, easing = LinearEasing), RepeatMode.Restart),
+            label = "orb angle",
+        )
+        turning
+    }
     val swell by animateFloatAsState(
-        1f + micLevel.coerceIn(0, 100) / 100f * 0.12f,
+        if (Perf.on) 1f else 1f + micLevel.coerceIn(0, 100) / 100f * 0.12f,
         // follows the microphone level, which changes many times a second: no bounce here
         spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium),
         label = "orb swell",

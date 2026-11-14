@@ -4,7 +4,7 @@ Registro de todo lo que se hizo, en orden, con las decisiones, los problemas y c
 
 ## 1. Origen de la idea
 
-- El usuario tenía varios teléfonos sin usar y un servidor Home Assistant (HA OS 2026.11.0, `192.168.1.16`, con Nabu Casa).
+- El usuario tenía varios teléfonos sin usar y un servidor Home Assistant (HA OS 2026.11.0, con Nabu Casa).
 - Pregunta inicial: ¿se puede dar a HA acceso a Bluetooth, parlantes y micrófono de un teléfono (rooteado)?
 - Se acotó a lo más simple: una app que vuelve el teléfono un parlante visible para HA, donde el usuario elige si es genérico o inteligente.
 - Requisito: que sea una app más una integración que se descarga, se configura y funciona (HACS). Se descartó la opción sin integración.
@@ -183,3 +183,20 @@ El teléfono se conecta a HA, no al revés, por WebSocket, así que funciona det
 
 - Antes de subir algo al repositorio público o crear un release, pedir confirmación al usuario.
 - Idioma de trabajo: español.
+
+## 14. Versión Lite (módulo `lite`)
+
+- Módulo Gradle aparte (`:lite`, `app.phonespeaker.lite`), compilado con `gradle :lite:assembleDebug` → `lite/build/outputs/apk/debug/lite-debug.apk` (~1,4 MB).
+- Solo parlante (modo `generic` del protocolo): reproducir, pausa, parar, volumen y silencio. Sin micrófono, pantalla, píldora, preguntas ni modos.
+- **minSdk 21 (Android 5)**. Sin Compose ni AndroidX: UI básica hecha con Views en código, solo depende de OkHttp 4.12.
+- Ahorro de batería siempre activo: Wi-Fi lock de bajo consumo, ping cada 60 s, estado solo al cambiar (más un latido cada 5 min). Un wake lock parcial mantiene la CPU despierta para que funcione con la pantalla apagada; botón para quitar restricciones de batería.
+- Arranca solo tras reiniciar (BootReceiver) salvo que el usuario la haya detenido.
+- Sin probar en un dispositivo todavía.
+
+## 15. Versión 0.10.0
+
+- **Pantalla apagada:** wake lock parcial de CPU en el servicio y botón "Sin restricciones de batería".
+- **Modo de rendimiento:** quita todas las animaciones y la píldora del asistente (las preguntas `phone_speaker.ask` se siguen mostrando, sin animación).
+- **Pantallas de error del modo launcher** (a pantalla completa, horizontales, Material 3 Expressive, tras 8 s sin conexión): sin red (botón a ajustes de WiFi), sin conexión con HA, falta la integración (404, botón a ajustes) y emparejamiento rechazado (4401, botón "Iniciar sesión nuevamente"). Mantener pulsado el título abre los ajustes.
+- **Escaneo de seguridad y bugs:** lint sin errores en `app` y `lite`; la integración comparaba códigos y tokens con `hmac.compare_digest` sobre texto, lo que lanza `TypeError` con caracteres no ASCII (ahora compara bytes); el receptor de arranque de Lite comprueba la acción; sin secretos en el repositorio (quitada una IP privada del historial).
+- Pendiente conocido: el tráfico HTTP sin cifrar (`usesCleartextTraffic`) es deliberado para redes locales; el código de emparejamiento de 6 dígitos tiene límite de 10 fallos por minuto.

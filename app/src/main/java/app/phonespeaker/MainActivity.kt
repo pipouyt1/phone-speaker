@@ -104,6 +104,13 @@ class MainActivity : ComponentActivity(), AppActions {
         applyFullscreen(cfg.fullscreen || roomShowing)
     }
 
+    private fun hasNetwork(): Boolean {
+        val cm = getSystemService(android.net.ConnectivityManager::class.java)
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork ?: return false) ?: return false
+        return caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) ||
+            caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)
+    }
+
     private fun snapshot(): UiState {
         val client = SpeakerService.client
         val service = SpeakerService.instance
@@ -112,6 +119,7 @@ class MainActivity : ComponentActivity(), AppActions {
             running = SpeakerService.running,
             connected = client?.connected == true,
             error = client?.lastError,
+            errorKind = if (!hasNetwork()) "network" else client?.lastKind ?: "host",
             phase = SpeakerService.voicePhase,
             lastHeard = SpeakerService.lastHeard,
             micLevel = SpeakerService.micLevel,
@@ -125,9 +133,11 @@ class MainActivity : ComponentActivity(), AppActions {
             display = SpeakerService.screenItem,
             displayEnabled = cfg.display,
             overlayGranted = Settings.canDrawOverlays(this),
+            batteryUnrestricted = getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(packageName),
             fullscreen = cfg.fullscreen,
             launcher = cfg.launcher,
             floating = cfg.floating,
+            performance = cfg.performance,
             assistantMode = cfg.assistantMode,
             assistantDefault = cfg.defaultAssistant,
             room = cfg.room,
@@ -216,9 +226,19 @@ class MainActivity : ComponentActivity(), AppActions {
         startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
     }
 
+    @android.annotation.SuppressLint("BatteryLife")
+    override fun requestBatteryExemption() {
+        startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
+    }
+
     override fun setFullscreen(enabled: Boolean) {
         cfg.fullscreen = enabled
         updateWindow()
+        tick++
+    }
+
+    override fun setPerformance(enabled: Boolean) {
+        cfg.performance = enabled
         tick++
     }
 

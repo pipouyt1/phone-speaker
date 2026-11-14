@@ -57,7 +57,7 @@ fun PromptCard(item: PromptItem, onAnswer: (Int) -> Unit, modifier: Modifier = M
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         tonalElevation = 6.dp,
         shadowElevation = 8.dp,
-        modifier = modifier.animateContentSize(spring<IntSize>(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)),
+        modifier = modifier.unlessPerf { animateContentSize(spring<IntSize>(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)) },
     ) {
         Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             item.media?.let { PromptMediaView(it) }
@@ -119,7 +119,7 @@ private fun PromptMediaView(media: PromptMedia) {
             when {
                 shown != null -> Image(shown, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
                 failed -> Text("No se pudo cargar la imagen", color = Color.White)
-                else -> LoadingIndicator(Modifier.size(48.dp))
+                else -> Busy(Modifier.size(48.dp))
             }
         }
     }

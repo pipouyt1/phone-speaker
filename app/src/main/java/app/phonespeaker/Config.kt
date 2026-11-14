@@ -87,6 +87,18 @@ class Config(private val ctx: Context) {
         get() = prefs.getBoolean("floating", true)
         set(v) = prefs.edit().putBoolean("floating", v).apply()
 
+    /** Performance mode: no animations and no assistant pill, for slow or old devices. */
+    var performance: Boolean
+        get() = prefs.getBoolean("performance", false)
+        set(v) {
+            prefs.edit().putBoolean("performance", v).apply()
+            app.phonespeaker.ui.Perf.on = v
+        }
+
+    init {
+        app.phonespeaker.ui.Perf.on = performance
+    }
+
     val smart: Boolean get() = mode != MODE_GENERIC
     val voice: Boolean get() = mode == MODE_VOICE
 

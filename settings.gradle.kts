@@ -14,3 +14,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "phone-speaker"
 include(":app")
+include(":lite")

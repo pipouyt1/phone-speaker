@@ -9,6 +9,8 @@ data class UiState(
     val running: Boolean,
     val connected: Boolean,
     val error: String?,
+    /** "network" (this device has no network), "host", "integration" or "rejected". */
+    val errorKind: String,
     val phase: String,
     val lastHeard: String,
     val micLevel: Int,
@@ -22,9 +24,11 @@ data class UiState(
     val display: DisplayItem?,
     val displayEnabled: Boolean,
     val overlayGranted: Boolean,
+    val batteryUnrestricted: Boolean,
     val fullscreen: Boolean,
     val launcher: Boolean,
     val floating: Boolean,
+    val performance: Boolean,
     val assistantMode: Boolean,
     val assistantDefault: Boolean,
     val room: Boolean,
@@ -47,9 +51,11 @@ interface AppActions {
     fun setDisplayEnabled(enabled: Boolean)
     fun dismissDisplay()
     fun requestOverlayPermission()
+    fun requestBatteryExemption()
     fun setFullscreen(enabled: Boolean)
     fun setLauncher(enabled: Boolean)
     fun setFloating(enabled: Boolean)
+    fun setPerformance(enabled: Boolean)
     fun setAssistantMode(enabled: Boolean)
     /** Answer the question on screen with button [index]. */
     fun answerPrompt(index: Int)
