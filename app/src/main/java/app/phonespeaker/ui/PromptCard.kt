@@ -8,6 +8,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.heightIn
@@ -24,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.viewinterop.AndroidView
 import app.phonespeaker.PromptMedia
 import kotlinx.coroutines.Dispatchers
@@ -52,26 +54,40 @@ import app.phonespeaker.PromptItem
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun PromptCard(item: PromptItem, onAnswer: (Int) -> Unit, modifier: Modifier = Modifier) {
+    val dismissible = item.options.isEmpty()
     Surface(
         shape = RoundedCornerShape(28.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         tonalElevation = 6.dp,
         shadowElevation = 8.dp,
-        modifier = modifier.unlessPerf { animateContentSize(spring<IntSize>(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)) },
+        modifier = modifier
+            .unlessPerf { animateContentSize(spring<IntSize>(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)) }
+            .then(
+                if (dismissible) Modifier.clickable(onClickLabel = "Cerrar", role = Role.Button) { onAnswer(-1) }
+                else Modifier
+            ),
     ) {
         Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             item.media?.let { PromptMediaView(it) }
             Text(item.question, style = MaterialTheme.typography.titleLarge, maxLines = 10)
-            FlowRow(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                item.options.forEachIndexed { index, label ->
-                    if (index == 0) {
-                        Button(onClick = { onAnswer(index) }, shapes = ButtonDefaults.shapes()) { Text(label) }
-                    } else {
-                        FilledTonalButton(onClick = { onAnswer(index) }, shapes = ButtonDefaults.shapes()) { Text(label) }
+            if (dismissible) {
+                Text(
+                    "Toca para cerrar",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                FlowRow(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    item.options.forEachIndexed { index, label ->
+                        if (index == 0) {
+                            Button(onClick = { onAnswer(index) }, shapes = ButtonDefaults.shapes()) { Text(label) }
+                        } else {
+                            FilledTonalButton(onClick = { onAnswer(index) }, shapes = ButtonDefaults.shapes()) { Text(label) }
+                        }
                     }
                 }
             }

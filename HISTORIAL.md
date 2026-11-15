@@ -200,3 +200,13 @@ El teléfono se conecta a HA, no al revés, por WebSocket, así que funciona det
 - **Pantallas de error del modo launcher** (a pantalla completa, horizontales, Material 3 Expressive, tras 8 s sin conexión): sin red (botón a ajustes de WiFi), sin conexión con HA, falta la integración (404, botón a ajustes) y emparejamiento rechazado (4401, botón "Iniciar sesión nuevamente"). Mantener pulsado el título abre los ajustes.
 - **Escaneo de seguridad y bugs:** lint sin errores en `app` y `lite`; la integración comparaba códigos y tokens con `hmac.compare_digest` sobre texto, lo que lanza `TypeError` con caracteres no ASCII (ahora compara bytes); el receptor de arranque de Lite comprueba la acción; sin secretos en el repositorio (quitada una IP privada del historial).
 - Pendiente conocido: el tráfico HTTP sin cifrar (`usesCleartextTraffic`) es deliberado para redes locales; el código de emparejamiento de 6 dígitos tiene límite de 10 fallos por minuto.
+
+## 16. Preguntas con 0 o 1 botón
+
+- `phone_speaker.ask` ahora acepta `options` con **0 a 4 botones** (antes 2 a 4) y el campo es opcional.
+- **Sin botones** es solo un aviso: se cierra al tocarlo o al cumplirse `timeout` (0 = sin límite). La
+  llamada no espera respuesta y devuelve `{id}`; el evento `phone_speaker_answer` se lanza igual al
+  cerrarlo, con `reason: dismissed` o `timeout`.
+- **Con un botón** se muestra ese único botón y la respuesta llega con `index: 0`.
+- Cambios en la app (`PromptCard`, `SpeakerService`), la integración (`media_player.py`, `device.py`,
+  `services.yaml`), el README y este historial.

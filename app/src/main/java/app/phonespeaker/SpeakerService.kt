@@ -64,7 +64,7 @@ class SpeakerService : Service(), HaClient.Listener {
             private set
 
         /** The user pressed answer [index] (0-based); -1 means no answer. */
-        fun answerPrompt(index: Int) { instance?.answer(index, "") }
+        fun answerPrompt(index: Int) { instance?.answer(index, if (index < 0) "dismissed" else "") }
 
         /** The assistant's last answer, as text (shown while it speaks). */
         @Volatile var lastReply: String = ""
@@ -238,7 +238,7 @@ class SpeakerService : Service(), HaClient.Listener {
         val id = msg.optString("id")
         val array = msg.optJSONArray("options")
         val options = List(array?.length() ?: 0) { array!!.optString(it) }.filter { it.isNotBlank() }.take(4)
-        if (id.isEmpty() || options.size < 2) return
+        if (id.isEmpty()) return
         val seconds = msg.optInt("timeout", 60)
         val media = msg.optJSONObject("media")?.let {
             val url = it.optString("url")

@@ -156,8 +156,10 @@ en cualquier teléfono. No hay palabra de activación en este modo.
 
 ## Preguntas con botones
 
-El servicio `phone_speaker.ask` hace aparecer la píldora con una pregunta y de 2 a 4 botones, sobre
-cualquier app (o dentro de la app si está abierta). Necesita el permiso **Mostrar sobre otras apps**.
+El servicio `phone_speaker.ask` hace aparecer la píldora con una pregunta y de 0 a 4 botones, sobre
+cualquier app (o dentro de la app si está abierta). Con un solo botón se responde tocándolo. Sin
+botones es un aviso: se cierra al tocarlo o al cumplirse `timeout`, y la llamada no espera respuesta.
+Necesita el permiso **Mostrar sobre otras apps**.
 
 ```yaml
 - action: phone_speaker.ask
@@ -168,12 +170,13 @@ cualquier app (o dentro de la app si está abierta). Necesita el permiso **Mostr
     camera: camera.puerta        # opcional: imagen en vivo sobre la pregunta
     # media: /local/foto.jpg     # opcional: imagen o video (URL o fuente multimedia)
     options: ["Abrir", "Ignorar"]
-    timeout: 60                  # segundos, 0 = hasta que respondas
+    timeout: 60                  # segundos; 0 = sin límite (se cierra al tocarlo)
   response_variable: r           # r[entidad] = {answered, index, option, reason}
 ```
 
-Con `wait: false` la automatización sigue de inmediato; en cualquier caso se lanza el evento
-`phone_speaker_answer` (`entity_id`, `id`, `question`, `answered`, `index`, `option`, `reason`).
+Con `wait: false` la automatización sigue de inmediato; sin botones nunca se espera respuesta, aunque
+`wait` sea true. En cualquier caso se lanza el evento `phone_speaker_answer` (`entity_id`, `id`,
+`question`, `answered`, `index`, `option`, `reason`).
 
 ## Instalar la integración en HA
 

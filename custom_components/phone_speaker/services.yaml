@@ -10,7 +10,7 @@ ask:
       selector:
         text:
     options:
-      required: true
+      default: []
       example: '["Cerrar", "Ignorar"]'
       selector:
         object:

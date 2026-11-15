@@ -55,8 +55,8 @@ async def async_setup_entry(
         "ask",
         {
             vol.Required("question"): cv.string,
-            vol.Required("options"): vol.All(
-                cv.ensure_list, [cv.string], vol.Length(min=2, max=4)
+            vol.Optional("options", default=[]): vol.All(
+                cv.ensure_list, [cv.string], vol.Length(min=0, max=4)
             ),
             vol.Optional("timeout", default=ASK_TIMEOUT): vol.All(
                 vol.Coerce(int), vol.Range(min=0, max=3600)
@@ -149,7 +149,7 @@ class PhoneSpeakerPlayer(PhoneEntity, MediaPlayerEntity):
         camera: str | None = None,
         media: str | None = None,
     ) -> dict[str, Any]:
-        """phone_speaker.ask: show a question with buttons, return which one was pressed."""
+        """phone_speaker.ask: show a question with 0-4 buttons, return which one was pressed."""
         attachment: dict[str, Any] | None = None
         if camera:
             state = self.hass.states.get(camera)
@@ -170,8 +170,14 @@ class PhoneSpeakerPlayer(PhoneEntity, MediaPlayerEntity):
                 "url": async_process_play_media_url(self.hass, media, allow_relative_url=True),
                 "refresh": 0,
             }
+        # with no buttons there is nothing to answer: just show the notice and return
         return await self.device.async_ask(
-            question, options, timeout=timeout, wait=wait, entity_id=self.entity_id, media=attachment
+            question,
+            options,
+            timeout=timeout,
+            wait=wait and bool(options),
+            entity_id=self.entity_id,
+            media=attachment,
         )
 
     async def async_browse_media(

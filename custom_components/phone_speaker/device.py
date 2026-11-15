@@ -165,7 +165,7 @@ class PhoneDevice:
         entity_id: str | None = None,
         media: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Show a question with 2-4 buttons on the phone and, if asked, wait for the answer."""
+        """Show a question with 0-4 buttons on the phone and, if asked, wait for the answer."""
         prompt_id = uuid.uuid4().hex[:12]
         future: asyncio.Future[dict[str, Any]] = self.hass.loop.create_future()
         self._prompts[prompt_id] = (future, question, options, entity_id)
